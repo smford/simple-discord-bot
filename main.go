@@ -6,6 +6,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -151,6 +152,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		parts := strings.Split(cleancommand, " ")
 
+		// list cameras
 		if parts[1] == "list" {
 			// print the cameras
 			cameralist := viper.GetStringSlice("cameras")
@@ -167,6 +169,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				s.ChannelMessageSend(m.ChannelID, "```No cameras found```")
 				return
 			}
+		}
+
+		// take snapshot
+		if parts[1] == "snapshot" {
+
+			s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+takeSnapshot(parts[2]))
 
 		}
 
@@ -198,4 +206,29 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 func someMessage(message string) string {
 	return message
+}
+
+func takeSnapshot(camera string) string {
+	fmt.Println("takesnapshot=", camera)
+	url := viper.GetString("cameraserver") + "/snap?camera=" + camera
+	fmt.Println("url=", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "cannot take snapshot"
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+
+		body, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			log.Println("Error: Could not take snapshot " + url)
+			return "Could not take snapshot"
+		}
+
+		return string(body)
+	} else {
+		return "Could not take snapshot"
+	}
 }
