@@ -156,6 +156,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if parts[1] == "list" {
 			// print the cameras
 			cameralist := viper.GetStringSlice("cameras")
+			sort.Strings(cameralist)
 			fmt.Printf("Type: %T,  Size: %d \n", cameralist, len(cameralist))
 			if len(cameralist) > 0 {
 				printtext := "```\n"
@@ -215,17 +216,16 @@ func someMessage(message string) string {
 }
 
 func takeSnapshot(camera string) string {
-	fmt.Println("takesnapshot=", camera)
+	//fmt.Println("takesnapshot=", camera)
 	url := viper.GetString("cameraserver") + "/snap?camera=" + camera
-	fmt.Println("url=", url)
+	//fmt.Println("url=", url)
 	resp, err := http.Get(url)
 	if err != nil {
-		return "cannot take snapshot"
+		return "Could not take snapshot"
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-
 		body, err := ioutil.ReadAll(resp.Body)
 
 		if err != nil {
@@ -235,6 +235,7 @@ func takeSnapshot(camera string) string {
 
 		return string(body)
 	} else {
+		log.Println("Error: Could not take snapshot " + url + " HTTPStatus: " + string(resp.StatusCode))
 		return "Could not take snapshot"
 	}
 }
