@@ -174,7 +174,13 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// take snapshot
 		if parts[1] == "snapshot" {
 
-			s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+takeSnapshot(parts[2]))
+			snapshotresult := takeSnapshot(parts[2])
+
+			if strings.HasPrefix(snapshotresult, "files/") {
+				s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
+			} else {
+				s.ChannelMessageSend(m.ChannelID, snapshotresult)
+			}
 
 		}
 
