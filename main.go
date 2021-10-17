@@ -175,12 +175,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// take snapshot
 		if parts[1] == "snapshot" {
 
-			snapshotresult := takeSnapshot(parts[2])
+			if foundCamera(parts[2]) {
+				snapshotresult := takeSnapshot(parts[2])
 
-			if strings.HasPrefix(snapshotresult, "files/") {
-				s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
+				if strings.HasPrefix(snapshotresult, "files/") {
+					s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
+				} else {
+					s.ChannelMessageSend(m.ChannelID, snapshotresult)
+				}
+
 			} else {
-				s.ChannelMessageSend(m.ChannelID, snapshotresult)
+				s.ChannelMessageSend(m.ChannelID, "Unknown camera")
 			}
 
 		}
@@ -238,4 +243,14 @@ func takeSnapshot(camera string) string {
 		log.Println("Error: Could not take snapshot " + url + " HTTPStatus: " + string(resp.StatusCode))
 		return "Could not take snapshot"
 	}
+}
+
+// is a camera valid
+func foundCamera(camera string) bool {
+	for _, result := range viper.GetStringSlice("cameras") {
+		if result == camera {
+			return true
+		}
+	}
+	return false
 }
