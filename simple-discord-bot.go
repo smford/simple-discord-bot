@@ -17,15 +17,10 @@ import (
 	"syscall"
 )
 
-const applicationVersion string = "v0.1"
+const applicationVersion string = "v0.2"
 
 var (
 	Token string
-	Color = 0x009688
-	//Icons = "https://kittyhacker101.tk/Static/KatBot"
-	Icons    = "https://cdn.discordapp.com/emojis"
-	Emojis   = make(map[string]string)
-	Channels = make(map[string]string)
 )
 
 func init() {
@@ -66,7 +61,6 @@ func init() {
 	}
 
 	Token = viper.GetString("discordtoken")
-	fmt.Println("discordtoken=", Token)
 }
 
 func main() {
@@ -82,26 +76,23 @@ func main() {
 		return
 	}
 
-	// Register the messageCreate func as a callback for MessageCreate events.
 	dg.AddHandler(messageCreate)
 
-	// Open a websocket connection to Discord and begin listening.
 	err = dg.Open()
 	if err != nil {
 		fmt.Println("error opening connection,", err)
 		return
 	}
 
-	// Wait here until CTRL-C or other term signal is received.
-	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
+	fmt.Println("simple-discord-bot is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
-	// Cleanly close down the Discord session.
 	dg.Close()
 }
 
+// displays configuration
 func displayConfig() {
 	allmysettings := viper.AllSettings()
 	var keys []string
@@ -114,6 +105,7 @@ func displayConfig() {
 	}
 }
 
+// displays help information
 func displayHelp() {
 	message := `
       --config string       Configuration file: /path/to/file.yaml (default "./config.yaml")
@@ -124,40 +116,43 @@ func displayHelp() {
 	fmt.Println(message)
 }
 
+// discord message handler
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// ignore messages from itself
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
 
+	// ignore commands we don't care about
 	if !strings.HasPrefix(m.Content, viper.GetString("commandkey")+" ") {
-		fmt.Println("not a command we care about")
 		return
 	}
 
+	// clean up the message/command
 	cleancommand := strings.Replace(m.Content, viper.GetString("commandkey")+" ", "", 1)
-	fmt.Println("cleancommand=", cleancommand)
 
+	// display help information
 	if cleancommand == "help" {
 		s.ChannelMessageSend(m.ChannelID, viper.GetString("discordhelp"))
 		return
 	}
 
+	// check if command is valid and do appropriate simple text response
 	if val, ok := viper.GetStringMap("commands")[cleancommand]; ok {
 		fmt.Println("val=", val)
 		s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommand].(string))
 		return
 	}
 
+	// handle camera related commands
 	if strings.HasPrefix(cleancommand, "camera ") {
 
 		parts := strings.Split(cleancommand, " ")
 
 		// list cameras
 		if parts[1] == "list" {
-			// print the cameras
 			cameralist := viper.GetStringSlice("cameras")
 			sort.Strings(cameralist)
-			fmt.Printf("Type: %T,  Size: %d \n", cameralist, len(cameralist))
 			if len(cameralist) > 0 {
 				printtext := "```\n"
 				for _, camera := range cameralist {
@@ -175,15 +170,22 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// take snapshot
 		if parts[1] == "snapshot" {
 
+			// check that camera given in message/command is valid
 			if foundCamera(parts[2]) {
+
+				// take a snapshot
 				snapshotresult := takeSnapshot(parts[2])
 
+				// check that return message is valid
 				if strings.HasPrefix(snapshotresult, "files/") {
+					// display link to image
 					s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
 				} else {
+					// display error message from motioneye-snapshotter
 					s.ChannelMessageSend(m.ChannelID, snapshotresult)
 				}
 
+				// camera is not valid
 			} else {
 				s.ChannelMessageSend(m.ChannelID, "Unknown camera")
 			}
@@ -191,39 +193,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	}
-
-	if m.Content == "!cat" {
-		tr := &http.Transport{DisableKeepAlives: true}
-		client := &http.Client{Transport: tr}
-		resp, err := client.Get("https://images-na.ssl-images-amazon.com/images/I/71FcdrSeKlL._AC_SL1001_.jpg")
-		if resp != nil {
-			defer resp.Body.Close()
-		}
-		if err != nil {
-			s.ChannelMessageSend(m.ChannelID, "Unable to fetch cat!")
-			fmt.Println("[Warning] : Cat API Error")
-		} else {
-			s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
-				Author: &discordgo.MessageEmbedAuthor{Name: "Cat Picture", IconURL: Icons + "/729726642758615151.png"},
-				Color:  Color,
-				Image: &discordgo.MessageEmbedImage{
-					URL: resp.Request.URL.String(),
-				},
-				Footer: &discordgo.MessageEmbedFooter{Text: "Cat pictures provided by TheCatApi", IconURL: Icons + "/729726642758615151.png"},
-			})
-			fmt.Println("[Info] : Cat sent successfully to " + m.Author.Username + "(" + m.Author.ID + ") in " + m.ChannelID)
-		}
-	}
 }
 
-func someMessage(message string) string {
-	return message
-}
-
+// take a snapshot of the camera using motioneye-snapshotter
 func takeSnapshot(camera string) string {
-	//fmt.Println("takesnapshot=", camera)
 	url := viper.GetString("cameraserver") + "/snap?camera=" + camera
-	//fmt.Println("url=", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "Could not take snapshot"
@@ -245,7 +219,7 @@ func takeSnapshot(camera string) string {
 	}
 }
 
-// is a camera valid
+// check whether camera is valid
 func foundCamera(camera string) bool {
 	for _, result := range viper.GetStringSlice("cameras") {
 		if result == camera {
