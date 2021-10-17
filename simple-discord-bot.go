@@ -138,8 +138,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// check if command is valid and do appropriate simple text response
-	if val, ok := viper.GetStringMap("commands")[cleancommand]; ok {
-		fmt.Println("val=", val)
+	if _, ok := viper.GetStringMap("commands")[cleancommand]; ok {
 		s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommand].(string))
 		return
 	}
