@@ -1,0 +1,37 @@
+discordtoken: aaaaaBBBBBBBcccccDDDDDD
+commandkey: "!eeh"
+commands:
+  wiki: "https://eehack.space"
+  www: "https://eehack.space"
+  web: "https://eehack.space"
+  status: "https://status.eehack.space/"
+  gatecode: "```\n1234\n```"
+  botwatcher: "https://botwatcher.eehack.space/"
+commandroles:
+  admin:
+    - 111111111111111111
+      # user1
+    - 222222222222222222
+      # user2
+  members:
+    - 111111111111111111
+      # user1
+commandperms:
+  wiki: all
+  www: "discord:role_1"
+  web: fakerole
+  status: all
+  gatecode: members
+  botwatcher: all
+  camera: admin
+  gatecode: members
+  help: all
+discordroles:
+  role_1: role1.ID
+  role_2: role2.ID
+cameras:
+  - main-door
+  - lobby
+cameraserver: http://aa.bb.cc.dd:54036
+cameraurl: https://some.website.com
+discordhelp: "```\nHelp Commands:\n--------------\n!eeh camera list\n!eeh camera snapshot <camera-name>\n!eeh gatecode\n!eeh wiki\n!eeh web\n!eeh www\n!eeh status\n!eeh botwatcher```"
