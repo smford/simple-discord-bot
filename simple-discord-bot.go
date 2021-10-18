@@ -18,7 +18,7 @@ import (
 	"syscall"
 )
 
-const applicationVersion string = "v0.4"
+const applicationVersion string = "v0.5"
 
 var (
 	Token string
@@ -190,12 +190,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	if cleancommandparts[1] == "pm" {
-		//func privateMessageCreate(s *discordgo.Session, userid string, message string) {
-		privateMessageCreate(s, m.Author.ID, "testing pm")
-		return
-	}
-
 	// display help information and return
 	if cleancommandparts[1] == "help" {
 		s.ChannelMessageSend(m.ChannelID, viper.GetString("discordhelp"))
@@ -204,7 +198,16 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// check if command is valid and do appropriate simple text response
 	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
-		s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommandparts[1]].(string))
+
+		commandmessageparts := strings.Split(viper.GetStringMap("commands")[cleancommandparts[1]].(string), ":")
+
+		if strings.ToLower(commandmessageparts[0]) == "secret" {
+			privateMessageCreate(s, m.Author.ID, strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "secret:", "", 1))
+			//privateMessageCreate(s, m.Author.ID, commandmessageparts[1])
+		} else {
+			s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommandparts[1]].(string))
+		}
+
 		return
 	}
 
