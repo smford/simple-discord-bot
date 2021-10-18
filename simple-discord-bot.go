@@ -18,7 +18,7 @@ import (
 	"syscall"
 )
 
-const applicationVersion string = "v0.3"
+const applicationVersion string = "v0.3.1"
 
 var (
 	Token string
@@ -124,61 +124,92 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
+	fmt.Printf("guild type = %T\n", s.State.Guild)
+	fmt.Printf("guild string = %s\n", s.State.Guild)
+	fmt.Printf("state structure=%+v\n", s.State)
 	fmt.Printf("m=%+v\n", m)
 	fmt.Printf("s.State.User.ID type=%T\n", s.State.User.ID)
 	fmt.Println("s.State.User.ID=", s.State.User.ID)
 	fmt.Printf("m.author.id type=%T\n", m.Author.ID)
 	fmt.Println("m.author.id=", m.Author.ID)
 
-	listRoles()
-
-	// ignore commands we don't care about
-	if !strings.HasPrefix(m.Content, viper.GetString("commandkey")+" ") {
+	chanl, err := s.Channel(m.ChannelID)
+	if err != nil {
 		return
 	}
 
-	// clean up the message/command
-	cleancommand := strings.Replace(m.Content, viper.GetString("commandkey")+" ", "", 1)
+	guild, _ := s.Guild(chanl.GuildID)
+	var author *discordgo.Member
 
-	commandrole := getCommandRole(cleancommand)
+	if guild != nil {
+		author, _ = s.GuildMember(guild.ID, m.Author.ID)
+	}
+
+	fmt.Printf("author=%s\nauthor +v: %+v\nauthortype=%T\n", author, author, author)
+
+	fmt.Printf("authorRoles=%s\nauthor +v: %+v\nauthortype=%T\n", author.Roles, author.Roles, author.Roles)
+
+	//return
+
+	listRoles()
+
+	// ignore commands we don't care about
+	if !strings.HasPrefix(strings.ToLower(m.Content), strings.ToLower(viper.GetString("commandkey"))+" ") {
+		return
+	}
+
+	//fmt.Printf("Username=%s\n", m.Author.Username)
+	log.Printf("User:%s ID:%s Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
+
+	// clean up the message/command
+	//cleancommand := strings.Replace(m.Content, viper.GetString("commandkey")+" ", "", 1)
+
+	cleancommandparts := strings.Split(strings.ToLower(m.Content), " ")
+
+	//fmt.Println("cleancommand=", cleancommand)
+	fmt.Println("cleancommandparts=", cleancommandparts)
+
+	commandrole := getCommandRole(cleancommandparts[1])
 
 	fmt.Printf("found commandrole=%s\n", commandrole)
 
 	if !isRoleValid(commandrole) {
 		// role doesn't exist
-		log.Printf("Error commandrole doesnt exist for %s", cleancommand)
+		log.Printf("Error commandrole doesnt exist for %s", cleancommandparts[1])
 		return
 	}
 
 	fmt.Println("getcommandrole=", commandrole)
 
-	if checkUserPerms(commandrole, m.Author.ID) {
-		fmt.Printf("User: %s has role: %s that command: %s requires\n", m.Author.ID, commandrole, cleancommand)
+	//if checkUserPerms(commandrole, m.Author.ID) {
+	if checkUserPerms(commandrole, author, m.Author.ID) {
+		fmt.Printf("User: %s has role: %s that command: %s requires\n", m.Author.ID, commandrole, cleancommandparts[1])
 
 	} else {
-		fmt.Printf("User: %s does not have role: %s that command: %s requires\n", m.Author.ID, commandrole, cleancommand)
-
+		fmt.Printf("User: %s does not have role: %s that command: %s requires\n", m.Author.ID, commandrole, cleancommandparts[1])
+		return
 	}
 
-	// display help information
-	if cleancommand == "help" {
+	// display help information and return
+	if cleancommandparts[1] == "help" {
 		s.ChannelMessageSend(m.ChannelID, viper.GetString("discordhelp"))
 		return
 	}
 
 	// check if command is valid and do appropriate simple text response
-	if _, ok := viper.GetStringMap("commands")[cleancommand]; ok {
-		s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommand].(string))
+	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
+		s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommandparts[1]].(string))
 		return
 	}
 
 	// handle camera related commands
-	if strings.HasPrefix(cleancommand, "camera ") {
+	//if strings.HasPrefix(cleancommand, "camera ") {
+	if cleancommandparts[1] == "camera" {
 
-		parts := strings.Split(cleancommand, " ")
+		//parts := strings.Split(cleancommand, " ")
 
 		// list cameras
-		if parts[1] == "list" {
+		if cleancommandparts[2] == "list" {
 			cameralist := viper.GetStringSlice("cameras")
 			sort.Strings(cameralist)
 			if len(cameralist) > 0 {
@@ -196,13 +227,13 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		// take snapshot
-		if parts[1] == "snapshot" {
+		if cleancommandparts[2] == "snapshot" {
 
 			// check that camera given in message/command is valid
-			if foundCamera(parts[2]) {
+			if foundCamera(cleancommandparts[3]) {
 
 				// take a snapshot
-				snapshotresult := takeSnapshot(parts[2])
+				snapshotresult := takeSnapshot(cleancommandparts[3])
 
 				// check that return message is valid
 				if strings.HasPrefix(snapshotresult, "files/") {
@@ -268,39 +299,66 @@ func getCommandRole(command string) string {
 }
 
 // check if a user has a particular role, if they have a role return true
-func checkUserPerms(role string, userid string) bool {
+//func checkUserPerms(role string, userid string) bool {
+func checkUserPerms(role string, user *discordgo.Member, userid string) bool {
 	fmt.Println("===checkUserPerms")
 
-	if role == "no role set" {
+	fmt.Printf("*** discord.Member=%s\n*** discord.Member type= %T\n*** discord.Member guts=%+v\n", user, user, user)
+
+	roledetails := strings.Split(strings.ToLower(role), ":")
+	fmt.Println("roledetails=", roledetails)
+
+	if roledetails[0] == "no role set" {
 		fmt.Println("no role set, permission denied")
 		return false
 	}
 
-	if role == "all" {
+	if roledetails[0] == "all" {
 		// everyones allowed to run this command
 		return true
 	}
 
-	fmt.Printf("role=%s    user=%s\n", role, userid)
+	fmt.Printf("roledetails=%s    user=%s  id=%s\n", roledetails, user.User, userid)
 
-	result := viper.GetStringMap("commandroles")
+	if roledetails[0] == "discord" {
+		// check if users allowed via discord roles
+		fmt.Printf("discord role:%s\n", roledetails[1])
 
-	for _, users := range result[role].([]interface{}) {
-		fmt.Printf(" - %s    type: %T    converted: %T\n", users, users, strconv.Itoa(users.(int)))
-	}
+		usersDiscordRoles := user.Roles
 
-	// func sliceContains(s []string, str string) bool {
-	// if sliceContains(result[role].([]interface{}), userid) {
-	if sliceContains(result[role].([]interface{}), userid) {
-		//if sliceContains(users, userid) {
-		fmt.Printf("Found user %s in %s!\n", userid, role)
-		return true
+		for _, v := range usersDiscordRoles {
+			fmt.Println("*** iterating over userDiscordRoles")
+			//if strconv.Itoa(v.(int)) == roledetails[1] {
+			fmt.Printf("v=%s   role=%s\n", v, roledetails[1])
+			fmt.Printf("v=%s   role=%s\n", v, strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)))
+			if v == strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)) {
+				fmt.Println("*** found users discord role")
+				return true
+			}
+		}
+		fmt.Println("*** user does not have needed discord role")
+		return false
+
 	} else {
-		fmt.Println("not here")
+		// check normal roles
+
+		fmt.Printf("normal role:%s\n", roledetails[0])
+
+		result := viper.GetStringMap("commandroles")
+
+		for _, users := range result[role].([]interface{}) {
+			fmt.Printf(" - %s    type: %T    converted: %T\n", users, users, strconv.Itoa(users.(int)))
+		}
+
+		if sliceContainsInt(result[role].([]interface{}), userid) {
+			fmt.Printf("Found user %s in %s!\n", userid, role)
+			return true
+		} else {
+			fmt.Println("not here")
+		}
+
+		fmt.Println("=================")
 	}
-
-	fmt.Println("=================")
-
 	return false
 }
 
@@ -328,9 +386,31 @@ func isRoleValid(role string) bool {
 		return true
 	}
 
+	roledetails := strings.Split(strings.ToLower(role), ":")
+
+	fmt.Println("roledetails=", roledetails)
+
+	// check if it is a discord role
+	if roledetails[0] == "discord" {
+		if !viper.IsSet("discordroles") {
+			log.Printf("Error: discordroles not configured")
+			return false
+		}
+
+		if _, ok := viper.GetStringMap("discordroles")[roledetails[1]]; ok {
+			fmt.Println("discord roles found")
+			return true
+		} else {
+			fmt.Println("discord roles not found")
+		}
+
+		return false
+	}
+
+	// check if normal role
 	if viper.IsSet("commandroles") {
 		fmt.Println("isset commandroles")
-		if _, ok := viper.GetStringMap("commandroles")[role]; ok {
+		if _, ok := viper.GetStringMap("commandroles")[roledetails[0]]; ok {
 			fmt.Println("command roles found")
 			return true
 		} else {
@@ -344,8 +424,8 @@ func isRoleValid(role string) bool {
 
 // does a int slice contain a value
 // https://freshman.tech/snippets/go/check-if-slice-contains-element/
-func sliceContains(i []interface{}, str string) bool {
-	fmt.Println("sliceContains start")
+func sliceContainsInt(i []interface{}, str string) bool {
+	fmt.Println("sliceContainsInt start")
 	for _, v := range i {
 		if strconv.Itoa(v.(int)) == str {
 			return true
