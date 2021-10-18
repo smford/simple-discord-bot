@@ -18,7 +18,7 @@ import (
 	"syscall"
 )
 
-const applicationVersion string = "v0.3.1"
+const applicationVersion string = "v0.4"
 
 var (
 	Token string
@@ -187,6 +187,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	} else {
 		fmt.Printf("User: %s does not have role: %s that command: %s requires\n", m.Author.ID, commandrole, cleancommandparts[1])
+		return
+	}
+
+	if cleancommandparts[1] == "pm" {
+		//func privateMessageCreate(s *discordgo.Session, userid string, message string) {
+		privateMessageCreate(s, m.Author.ID, "testing pm")
 		return
 	}
 
@@ -432,4 +438,24 @@ func sliceContainsInt(i []interface{}, str string) bool {
 		}
 	}
 	return false
+}
+
+// send a private message to a user
+func privateMessageCreate(s *discordgo.Session, userid string, message string) {
+
+	// create the private message channel to user
+	channel, err := s.UserChannelCreate(userid)
+	if err != nil {
+		log.Printf("Error: Creating PM channel to %s with %s\n", userid, err)
+		s.ChannelMessageSend(userid, "Something went wrong while sending the DM!")
+		return
+	}
+
+	// send the message to the user
+	_, err = s.ChannelMessageSend(channel.ID, message)
+	if err != nil {
+		log.Printf("Error: Cannot send DM to %s with %s\n", userid, err)
+		s.ChannelMessageSend(userid, "Failed to send you a DM. Did you disable DM in your privacy settings?")
+	}
+
 }
