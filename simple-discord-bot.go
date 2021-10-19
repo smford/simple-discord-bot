@@ -91,7 +91,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
+	log.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
@@ -356,34 +356,29 @@ func isRoleValid(role string) bool {
 		}
 
 		if _, ok := viper.GetStringMap("discordroles")[roledetails[1]]; ok {
-			fmt.Println("discord roles found")
+			// found valid discord role
 			return true
-		} else {
-			fmt.Println("discord roles not found")
 		}
 
+		// no valid discord role found
 		return false
 	}
 
 	// check if normal role
 	if viper.IsSet("commandroles") {
-		fmt.Println("isset commandroles")
 		if _, ok := viper.GetStringMap("commandroles")[roledetails[0]]; ok {
-			fmt.Println("command roles found")
+			// found valid role in commandroles
 			return true
-		} else {
-			fmt.Println("command roles not found")
 		}
 	}
 
-	fmt.Println("command perms fall through")
+	// catch all deny
 	return false
 }
 
 // does a int slice contain a value
 // https://freshman.tech/snippets/go/check-if-slice-contains-element/
 func sliceContainsInt(i []interface{}, str string) bool {
-	fmt.Println("sliceContainsInt start")
 	for _, v := range i {
 		if strconv.Itoa(v.(int)) == str {
 			return true
