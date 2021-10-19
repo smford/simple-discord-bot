@@ -5,8 +5,8 @@ commands:
   www: "https://eehack.space"
   web: "https://eehack.space"
   status: "https://status.eehack.space/"
-  gatecode: "```\n1234\n```"
-  botwatcher: "https://botwatcher.eehack.space/"
+  gatecode: "secret:`\n1234\n`"
+  botwatcher: "https://botwatcher.eehack.space/status"
 commandroles:
   admin:
     - 111111111111111111
@@ -19,7 +19,7 @@ commandroles:
 commandperms:
   wiki: all
   www: "discord:role_1"
-  web: fakerole
+  web: "discord:role_2"
   status: all
   gatecode: members
   botwatcher: all
@@ -27,8 +27,8 @@ commandperms:
   gatecode: members
   help: all
 discordroles:
-  role_1: role1.ID
-  role_2: role2.ID
+  role_1: 123456789123456789
+  role_2: 987654321987654321
 cameras:
   - main-door
   - lobby
