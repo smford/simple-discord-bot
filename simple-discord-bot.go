@@ -18,7 +18,7 @@ import (
 	"syscall"
 )
 
-const applicationVersion string = "v0.5.2"
+const applicationVersion string = "v0.5.3"
 
 var (
 	Token string
@@ -175,16 +175,40 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// check if command is valid and do appropriate simple text response
+	// check if command is valid and do appropriate text response
 	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
 
-		commandmessageparts := strings.Split(viper.GetStringMap("commands")[cleancommandparts[1]].(string), ":")
+		commandmessageparts := strings.Split(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "|")
+
+		issecret := false
+		isapicall := false
+
+		var messagetosend string
+
+		// discern whether command is an apicall or secret
+		for _, value := range commandmessageparts {
+			if value == "secret" {
+				issecret = true
+			}
+			if value == "api" {
+				isapicall = true
+			}
+		}
+
+		// strip "api|" and "secret|" from the command
+		messagetosend = strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "api|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
+
+		// if an api call do it and get response which will become the message sent to the user
+		if isapicall {
+			messagetosend = downloadApi(messagetosend)
+		}
 
 		// send the command response, if marked as secret send via private message
-		if strings.ToLower(commandmessageparts[0]) == "secret" {
-			privateMessageCreate(s, m.Author.ID, strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "secret:", "", 1))
+		if issecret {
+			privateMessageCreate(s, m.Author.ID, messagetosend)
 		} else {
-			s.ChannelMessageSend(m.ChannelID, viper.GetStringMap("commands")[cleancommandparts[1]].(string))
+			s.ChannelMessageSend(m.ChannelID, messagetosend)
 		}
 
 		return
@@ -195,20 +219,16 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		// list cameras
 		if cleancommandparts[2] == "list" {
-			cameralist := viper.GetStringSlice("cameras")
-			sort.Strings(cameralist)
-			if len(cameralist) > 0 {
-				printtext := "```\n"
-				for _, camera := range cameralist {
-					printtext = printtext + camera + "\n"
-				}
-				printtext = printtext + "```"
-				s.ChannelMessageSend(m.ChannelID, printtext)
-				return
-			} else {
-				s.ChannelMessageSend(m.ChannelID, "```No cameras found```")
-				return
-			}
+
+			cameralisturl := viper.GetString("cameraserver") + "/cameras?json=y"
+
+			cameralist := downloadApi(cameralisturl)
+
+			fmt.Printf("cameralist=%s\n", cameralist)
+
+			s.ChannelMessageSend(m.ChannelID, cameralist)
+
+			return
 		}
 
 		// take snapshot
@@ -237,6 +257,29 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		}
 
+	}
+}
+
+// make a query to a url
+func downloadApi(url string) string {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("Error: Could not connect to api url:\"%s\" with error:%s", url, err)
+		return "error"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		body, err := ioutil.ReadAll(resp.Body)
+
+		if err != nil {
+			log.Printf("Error: Cannot take snapshot URL \"%s\", Message:%s\n", url, err)
+			return "Could not take snapshot"
+		}
+
+		return string(body)
+	} else {
+		log.Println("Error: Could not take snapshot " + url + " HTTPStatus: " + string(resp.StatusCode))
+		return "Could not take snapshot"
 	}
 }
 
