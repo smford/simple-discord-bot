@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.4"
+const applicationVersion string = "v0.5.5"
 
 var (
 	Token string
@@ -168,12 +168,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// check if user has permissions to execute a command
 	if !checkUserPerms(commandrole, author, m.Author.ID) {
 		log.Printf("Error: User:%s ID:%s Does not have permission to run Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
-		return
-	}
-
-	// display help information and return
-	if cleancommandparts[1] == "help" {
-		s.ChannelMessageSend(m.ChannelID, viper.GetString("discordhelp"))
 		return
 	}
 
