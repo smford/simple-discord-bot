@@ -3,22 +3,24 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.3"
+const applicationVersion string = "v0.5.4"
 
 var (
 	Token string
@@ -57,7 +59,7 @@ func init() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Fatal("Config file not found")
 		} else {
-			log.Fatal("Config file was found but another error was discovered")
+			log.Fatal("Config file was found but another error was discovered: ", err)
 		}
 	}
 
@@ -182,6 +184,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		issecret := false
 		isapicall := false
+		isfile := false
 
 		var messagetosend string
 
@@ -193,15 +196,36 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "api" {
 				isapicall = true
 			}
+			if value == "file" {
+				isfile = true
+			}
 		}
 
-		// strip "api|" and "secret|" from the command
+		// if api and file then return and throw an error, this is not a valid option configuration
+		if isapicall && isfile {
+			log.Printf("Error: Cannot have command api| with file| on command %s\n", viper.GetStringMap("commands")[cleancommandparts[1]].(string))
+			return
+		}
+
+		// strip "api|", "file|" and "secret|" from the command
 		messagetosend = strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "api|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
 
 		// if an api call do it and get response which will become the message sent to the user
 		if isapicall {
 			messagetosend = downloadApi(messagetosend)
+		}
+
+		// if we need to load a files contents into message to send
+		if isfile {
+			tempcontents, err := loadFile(messagetosend)
+			if err != nil {
+				log.Printf("Error loading file: %s with: %s\n", messagetosend, err)
+				return
+			}
+
+			messagetosend = tempcontents
 		}
 
 		// send the command response, if marked as secret send via private message
@@ -448,4 +472,15 @@ func privateMessageCreate(s *discordgo.Session, userid string, message string) {
 		s.ChannelMessageSend(userid, "Failed to send you a DM. Did you disable DM in your privacy settings?")
 	}
 
+}
+
+func loadFile(filename string) (string, error) {
+	// clean file name to prevent path traversal
+	cleanFilename := path.Join("/", filename)
+
+	// load the file
+	filecontents, err := ioutil.ReadFile(cleanFilename)
+
+	// return contents and any error
+	return string(filecontents), err
 }
