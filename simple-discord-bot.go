@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.5"
+const applicationVersion string = "v0.5.6"
 
 var (
 	Token string
@@ -28,8 +28,9 @@ var (
 
 func init() {
 	flag.String("config", "config.yaml", "Configuration file: /path/to/file.yaml, default = ./config.yaml")
-	flag.Bool("help", false, "Display help information")
 	flag.Bool("displayconfig", false, "Display configuration")
+	flag.Bool("help", false, "Display help")
+	flag.Bool("version", false, "Display version")
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
@@ -37,6 +38,11 @@ func init() {
 
 	if viper.GetBool("help") {
 		displayHelp()
+		os.Exit(0)
+	}
+
+	if viper.GetBool("version") {
+		fmt.Printf("simple-discord-bot %s\n", applicationVersion)
 		os.Exit(0)
 	}
 
@@ -119,7 +125,8 @@ func displayHelp() {
 	message := `
       --config string       Configuration file: /path/to/file.yaml (default "./config.yaml")
       --displayconfig       Display configuration
-      --help                Display help information
+      --help                Display help
+      --version             Display version
 `
 	fmt.Println("simple-discord-bot " + applicationVersion)
 	fmt.Println(message)
