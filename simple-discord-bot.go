@@ -162,9 +162,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// strip out the command key
 	cleancommand := strings.Replace(strings.ToLower(m.Content), viper.GetString("commandkey")+" ", "", 1)
 
-	a, b, c, d := findCommand(cleancommand)
+	a, b, c := findCommand(cleancommand)
 
-	fmt.Printf("findcommandreturn: a=%s, b=%b, c=%d, d=%d\n", a, b, c, d)
+	fmt.Printf("findcommandreturn: a=%s, b=%b, c=%v\n", a, b, c)
 	return
 
 	// camera list opt1 opt2
@@ -520,27 +520,27 @@ func loadFile(filename string) (string, error) {
 	return string(filecontents), err
 }
 
-func findCommand(thecommand string) (string, bool, int, int) {
-	// returns
-	// string = foundcommand
-	// bool = whether command is valid
-	// int = number of tokens which comprise of the command
-	// int = number of tokens at the end which say how many are optional tokens
+func findCommand(thecommand string) (string, bool, map[string]string) {
 
 	isValidCommand := false
 
 	allparts := strings.Split(thecommand, " ")
-
 	num_allparts := len(allparts)
 
 	var checkthiscommand string = ""
 
 	var lastvalidcommandfound string = ""
 
-	var command_num int = 0
-	var optional_num int = 0
+	//var command_num int = 0
+	//var optional_num int = 0
+
+	var option_num int = 0
+	//var options map[string]string
+
+	options := make(map[string]string)
 
 	for i := 0; i < num_allparts; i++ {
+		fmt.Printf("%d =================\n", i)
 		if i == 0 {
 			checkthiscommand = allparts[0]
 		} else {
@@ -548,15 +548,35 @@ func findCommand(thecommand string) (string, bool, int, int) {
 		}
 
 		fmt.Println("findCommand: checking " + checkthiscommand)
-		//if _, ok := viper.GetStringMap("commands")[checkthiscommand]; ok {
-		if _, ok := viper.GetStringMap("commandperms")[checkthiscommand]; ok {
+		if _, ok := viper.GetStringMap("commands")[checkthiscommand]; ok {
+			fmt.Println("FOUND COMMAND")
 			lastvalidcommandfound = checkthiscommand
-			command_num = i + 1
-			optional_num = num_allparts - command_num
 			isValidCommand = true
+
+			// assume all remaining unparse tokens are optional.  each loop will update the list until no further valid commands are found
+
+			option_num = 0
+			new_options := make(map[string]string)
+			for oi := i + 1; oi < num_allparts; oi++ {
+				fmt.Printf("oi=%d  allparts[%d]=%s\n", oi, oi, allparts[oi])
+				fmt.Println("setting new_options")
+				new_options["{"+strconv.Itoa(option_num)+"}"] = allparts[oi]
+				option_num++
+			}
+
+			fmt.Println("before options = new_options")
+			options = new_options
+			fmt.Println("after options = new_options")
+
+		} else {
+			fmt.Println("NOT FOUND COMMAND")
 		}
 
 	}
 
-	return lastvalidcommandfound, isValidCommand, command_num, optional_num
+	for key, value := range options { // Order not specified
+		fmt.Printf("options: key=%s value=%s\n", key, value)
+	}
+
+	return lastvalidcommandfound, isValidCommand, options
 }
