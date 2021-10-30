@@ -159,8 +159,31 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// log commands passed to bot
 	log.Printf("User:%s ID:%s Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
 
+	// strip out the command key
+	cleancommand := strings.Replace(strings.ToLower(m.Content), viper.GetString("commandkey")+" ", "", 1)
+
+	a, b, c, d := findCommand(cleancommand)
+
+	fmt.Printf("findcommandreturn: a=%s, b=%b, c=%d, d=%d\n", a, b, c, d)
+	return
+
+	// camera list opt1 opt2
+
+	//for each part, check if all contcatenated previous ones match a command
+	// check if part1
+
 	// break command up in to tokens
-	cleancommandparts := strings.Split(strings.ToLower(m.Content), " ")
+	cleancommandparts := strings.Split(cleancommand, " ")
+
+	num_commandparts := len(cleancommandparts)
+
+	fmt.Printf("num_commandparts=%d\n", num_commandparts)
+
+	var i int = 0
+	for _, command := range cleancommandparts {
+		fmt.Printf("%d  = %s\n", i, command)
+		i++
+	}
 
 	// find role for the primary command
 	commandrole := getCommandRole(cleancommandparts[1])
@@ -186,6 +209,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		issecret := false
 		isapicall := false
 		isfile := false
+		istemplate := false
 
 		var messagetosend string
 
@@ -200,6 +224,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "file" {
 				isfile = true
 			}
+			if value == "template" {
+				istemplate = true
+			}
 		}
 
 		// if api and file then return and throw an error, this is not a valid option configuration
@@ -208,10 +235,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		// strip "api|", "file|" and "secret|" from the command
+		// strip "api|", "file|", "template|"  and "secret|" from the command
 		messagetosend = strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "template|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
+
+		// do templating here
+		if istemplate {
+			messagetosend = strings.Replace(messagetosend, "{o1}", "poo", -1)
+			messagetosend = strings.Replace(messagetosend, "{o2}", "stain", -1)
+		}
 
 		// if an api call do it and get response which will become the message sent to the user
 		if isapicall {
@@ -484,4 +518,45 @@ func loadFile(filename string) (string, error) {
 
 	// return contents and any error
 	return string(filecontents), err
+}
+
+func findCommand(thecommand string) (string, bool, int, int) {
+	// returns
+	// string = foundcommand
+	// bool = whether command is valid
+	// int = number of tokens which comprise of the command
+	// int = number of tokens at the end which say how many are optional tokens
+
+	isValidCommand := false
+
+	allparts := strings.Split(thecommand, " ")
+
+	num_allparts := len(allparts)
+
+	var checkthiscommand string = ""
+
+	var lastvalidcommandfound string = ""
+
+	var command_num int = 0
+	var optional_num int = 0
+
+	for i := 0; i < num_allparts; i++ {
+		if i == 0 {
+			checkthiscommand = allparts[0]
+		} else {
+			checkthiscommand = checkthiscommand + " " + allparts[i]
+		}
+
+		fmt.Println("findCommand: checking " + checkthiscommand)
+		//if _, ok := viper.GetStringMap("commands")[checkthiscommand]; ok {
+		if _, ok := viper.GetStringMap("commandperms")[checkthiscommand]; ok {
+			lastvalidcommandfound = checkthiscommand
+			command_num = i + 1
+			optional_num = num_allparts - command_num
+			isValidCommand = true
+		}
+
+	}
+
+	return lastvalidcommandfound, isValidCommand, command_num, optional_num
 }
