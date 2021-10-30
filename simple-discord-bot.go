@@ -164,7 +164,24 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	a, b, c := findCommand(cleancommand)
 
-	fmt.Printf("findcommandreturn: a=%s, b=%b, c=%v\n", a, b, c)
+	fmt.Printf("findcommandreturn: command=%s, isValid?=%b, options=%v\n", a, b, c)
+
+	fmt.Printf("Number of options=%d\n", len(a))
+
+	if _, ok := viper.GetStringMap("commands")[a]; ok {
+		fmt.Printf("command=%s        action=%s\n", a, viper.GetStringMap("commands")[a])
+	}
+
+	aftertemplate := viper.GetStringMap("commands")[a]
+	fmt.Printf("before template replacement: \"%s\"\n", aftertemplate)
+	for key, value := range c {
+
+		aftertemplate = strings.Replace(aftertemplate.(string), key, value, -1)
+
+	}
+
+	fmt.Printf(" After template replacement: \"%s\"\n", aftertemplate)
+
 	return
 
 	// camera list opt1 opt2
