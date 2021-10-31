@@ -180,12 +180,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// find role for the primary command
-	commandrole := getCommandRole(mycommand)
+	commandrole := getCommandRole(cleancommandparts[1])
 
 	// check if a role has been assigned to the command, and ignore if none has been set or role is invalid
 	if !isRoleValid(commandrole) {
 		// role doesn't exist
-		log.Printf("Error: commandrole doesnt exist for %s", mycommand)
+		log.Printf("Error: commandrole doesnt exist for %s", cleancommandparts[1])
 		return
 	}
 
@@ -196,7 +196,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// check if command is valid and do appropriate text response
-	if _, ok := viper.GetStringMap("commands")[mycommand]; ok {
+	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
 
 		commandmessageparts := strings.Split(aftertemplate.(string), "|")
 
@@ -221,7 +221,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		// if api and file then return and throw an error, this is not a valid option configuration
 		if isapicall && isfile {
-			log.Printf("Error: Cannot have command api| with file| on command %s\n", mycommand)
+			log.Printf("Error: Cannot have command api| with file| on command %s\n", viper.GetStringMap("commands")[cleancommandparts[1]].(string))
 			return
 		}
 
@@ -255,6 +255,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		return
 	}
+
 }
 
 // make a query to a url
