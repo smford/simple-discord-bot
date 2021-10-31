@@ -5,8 +5,13 @@ commands:
   www: "https://eehack.space"
   web: "https://eehack.space"
   status: "https://status.eehack.space/"
-  gatecode: "secret:`\n1234\n`"
+  gatecode: "secret|Gatecode: `1234`"
   botwatcher: "https://botwatcher.eehack.space/status"
+  help: "secret|file|/path/to/help.txt"
+  "camera list": "api|http://172.28.0.10:54036/cameras"
+  "camera snapshot": "secret|api|http://172.28.0.10:54036/snap?camera={0}"
+  "server ip": "api|https://api.ipify.org"
+  "my name is": "secret|Your first name is {0} and surname is {1}"
 commandroles:
   admin:
     - 111111111111111111
@@ -26,12 +31,10 @@ commandperms:
   camera: admin
   gatecode: members
   help: all
+  "camera list": all
+  "camera snapshot": "discord:role_2"
+  "server ip": admin
+  "my name is": all
 discordroles:
   role_1: 123456789123456789
   role_2: 987654321987654321
-cameras:
-  - main-door
-  - lobby
-cameraserver: http://aa.bb.cc.dd:54036
-cameraurl: https://some.website.com
-discordhelp: "```\nHelp Commands:\n--------------\n!eeh camera list\n!eeh camera snapshot <camera-name>\n!eeh gatecode\n!eeh wiki\n!eeh web\n!eeh www\n!eeh status\n!eeh botwatcher```"
