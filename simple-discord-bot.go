@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.6"
+const applicationVersion string = "v0.5.7"
 
 var (
 	Token string
@@ -87,7 +87,7 @@ func main() {
 	// Create a new Discord session using the provided bot token.
 	dg, err := discordgo.New("Bot " + Token)
 	if err != nil {
-		fmt.Println("error creating Discord session,", err)
+		log.Println("error creating Discord session,", err)
 		return
 	}
 
@@ -95,7 +95,7 @@ func main() {
 
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("error opening connection,", err)
+		log.Println("error opening connection,", err)
 		return
 	}
 
@@ -157,10 +157,27 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// log commands passed to bot
-	log.Printf("User:%s ID:%s Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
+	log.Printf("User:%s ID:%s Command:\"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
 
-	// break command up in to tokens
-	cleancommandparts := strings.Split(strings.ToLower(m.Content), " ")
+	// strip out the command key
+	cleancommand := strings.Replace(strings.ToLower(m.Content), viper.GetString("commandkey")+" ", "", 1)
+
+	// mycommand = the valid command found
+	// iscommandvalid = is command valid?
+	// myoptions = map of all options, ready for templating
+	mycommand, iscommandvalid, myoptions := findCommand(cleancommand)
+
+	if !iscommandvalid {
+		log.Printf("User:%s ID:%s Command:\"%s\" Status:\"Command is invalid\"\n", m.Author.Username, m.Author.ID, m.Content)
+		return
+	}
+
+	aftertemplate := viper.GetStringMap("commands")[mycommand]
+
+	// do all the templating, replace {0} etc in the command with the options the user has given
+	for key, value := range myoptions {
+		aftertemplate = strings.Replace(aftertemplate.(string), key, value, -1)
+	}
 
 	// find role for the primary command
 	commandrole := getCommandRole(cleancommandparts[1])
@@ -181,7 +198,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// check if command is valid and do appropriate text response
 	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
 
-		commandmessageparts := strings.Split(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "|")
+		commandmessageparts := strings.Split(aftertemplate.(string), "|")
 
 		issecret := false
 		isapicall := false
@@ -208,8 +225,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		// strip "api|", "file|" and "secret|" from the command
-		messagetosend = strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "api|", "", -1)
+		// strip "api|", "file|" and "secret|" from the commands action
+		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
 
@@ -239,50 +256,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// handle camera related commands
-	if cleancommandparts[1] == "camera" {
-
-		// list cameras
-		if cleancommandparts[2] == "list" {
-
-			cameralisturl := viper.GetString("cameraserver") + "/cameras?json=y"
-
-			cameralist := downloadApi(cameralisturl)
-
-			fmt.Printf("cameralist=%s\n", cameralist)
-
-			s.ChannelMessageSend(m.ChannelID, cameralist)
-
-			return
-		}
-
-		// take snapshot
-		if cleancommandparts[2] == "snapshot" {
-
-			// check that camera given in message/command is valid
-			if foundCamera(cleancommandparts[3]) {
-
-				// take a snapshot
-				snapshotresult := takeSnapshot(cleancommandparts[3])
-
-				// check that return message is valid
-				if strings.HasPrefix(snapshotresult, "files/") {
-					// display link to image
-					s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
-					log.Printf("User:%s ID:%s Snapshot: \"%s\"\n", m.Author.Username, m.Author.ID, viper.GetString("cameraurl")+"/"+snapshotresult)
-				} else {
-					// display error message from motioneye-snapshotter
-					s.ChannelMessageSend(m.ChannelID, snapshotresult)
-				}
-
-				// camera is not valid
-			} else {
-				s.ChannelMessageSend(m.ChannelID, "Unknown camera")
-			}
-
-		}
-
-	}
 }
 
 // make a query to a url
@@ -355,7 +328,6 @@ func getCommandRole(command string) string {
 
 // check if a user has a particular role, if they have a role return true
 func checkUserPerms(role string, user *discordgo.Member, userid string) bool {
-
 	roledetails := strings.Split(strings.ToLower(role), ":")
 
 	if roledetails[0] == "no role set" {
@@ -484,4 +456,49 @@ func loadFile(filename string) (string, error) {
 
 	// return contents and any error
 	return string(filecontents), err
+}
+
+func findCommand(thecommand string) (string, bool, map[string]string) {
+
+	isValidCommand := false
+
+	allparts := strings.Split(thecommand, " ")
+	num_allparts := len(allparts)
+
+	var checkthiscommand string = ""
+
+	var lastvalidcommandfound string = ""
+
+	var option_num int = 0
+
+	options := make(map[string]string)
+
+	for i := 0; i < num_allparts; i++ {
+		if i == 0 {
+			checkthiscommand = allparts[0]
+		} else {
+			checkthiscommand = checkthiscommand + " " + allparts[i]
+		}
+
+		if _, ok := viper.GetStringMap("commands")[checkthiscommand]; ok {
+			lastvalidcommandfound = checkthiscommand
+			isValidCommand = true
+
+			// assume all remaining unparse tokens are optional.  each loop will update the list until no further valid commands are found
+			option_num = 0
+			new_options := make(map[string]string)
+			for oi := i + 1; oi < num_allparts; oi++ {
+				new_options["{"+strconv.Itoa(option_num)+"}"] = allparts[oi]
+				option_num++
+			}
+
+			options = new_options
+
+		} else {
+			// command not matched, continue iterating through commands looking for the longest matching combination
+		}
+
+	}
+
+	return lastvalidcommandfound, isValidCommand, options
 }
