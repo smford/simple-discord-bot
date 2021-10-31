@@ -159,16 +159,44 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// log commands passed to bot
 	log.Printf("User:%s ID:%s Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
 
-	// break command up in to tokens
-	cleancommandparts := strings.Split(strings.ToLower(m.Content), " ")
+	// strip out the command key
+	cleancommand := strings.Replace(strings.ToLower(m.Content), viper.GetString("commandkey")+" ", "", 1)
+
+	// mycommand = command
+	// iscommandvalid = is command valid
+	// myoptions = map of all options, ready for templating
+	mycommand, iscommandvalid, myoptions := findCommand(cleancommand)
+
+	fmt.Printf("findcommandreturn: command=%s, isValid?=%b, options=%v\n", mycommand, iscommandvalid, myoptions)
+
+	if !iscommandvalid {
+		fmt.Println("Command:\"%s\" is not valid, ignoring\n", mycommand)
+		return
+	}
+
+	fmt.Printf("Number of options=%d\n", len(myoptions))
+
+	if _, ok := viper.GetStringMap("commands")[mycommand]; ok {
+		fmt.Printf("command=%s        action=%s\n", mycommand, viper.GetStringMap("commands")[mycommand])
+	}
+
+	aftertemplate := viper.GetStringMap("commands")[mycommand]
+	fmt.Printf("before template replacement: \"%s\"\n", aftertemplate)
+	for key, value := range myoptions {
+
+		aftertemplate = strings.Replace(aftertemplate.(string), key, value, -1)
+
+	}
+
+	fmt.Printf(" After template replacement: \"%s\"\n", aftertemplate)
 
 	// find role for the primary command
-	commandrole := getCommandRole(cleancommandparts[1])
+	commandrole := getCommandRole(mycommand)
 
 	// check if a role has been assigned to the command, and ignore if none has been set or role is invalid
 	if !isRoleValid(commandrole) {
 		// role doesn't exist
-		log.Printf("Error: commandrole doesnt exist for %s", cleancommandparts[1])
+		log.Printf("Error: commandrole doesnt exist for %s", mycommand)
 		return
 	}
 
@@ -179,13 +207,15 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// check if command is valid and do appropriate text response
-	if _, ok := viper.GetStringMap("commands")[cleancommandparts[1]]; ok {
+	if _, ok := viper.GetStringMap("commands")[mycommand]; ok {
 
-		commandmessageparts := strings.Split(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "|")
+		//commandmessageparts := strings.Split(viper.GetStringMap("commands")[mycommand].(string), "|")
+		commandmessageparts := strings.Split(aftertemplate.(string), "|")
 
 		issecret := false
 		isapicall := false
 		isfile := false
+		//istemplate := false
 
 		var messagetosend string
 
@@ -200,17 +230,21 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "file" {
 				isfile = true
 			}
+			//if value == "template" {
+			//	istemplate = true
+			//}
 		}
 
 		// if api and file then return and throw an error, this is not a valid option configuration
 		if isapicall && isfile {
-			log.Printf("Error: Cannot have command api| with file| on command %s\n", viper.GetStringMap("commands")[cleancommandparts[1]].(string))
+			log.Printf("Error: Cannot have command api| with file| on command %s\n", mycommand)
 			return
 		}
 
-		// strip "api|", "file|" and "secret|" from the command
-		messagetosend = strings.Replace(viper.GetStringMap("commands")[cleancommandparts[1]].(string), "api|", "", -1)
+		// strip "api|", "file|", "template|"  and "secret|" from the command
+		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
+		//messagetosend = strings.Replace(messagetosend, "template|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
 
 		// if an api call do it and get response which will become the message sent to the user
@@ -239,50 +273,52 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// handle camera related commands
-	if cleancommandparts[1] == "camera" {
+	/*
+		// handle camera related commands
+		if cleancommandparts[1] == "camera" {
 
-		// list cameras
-		if cleancommandparts[2] == "list" {
+			// list cameras
+			if cleancommandparts[2] == "list" {
 
-			cameralisturl := viper.GetString("cameraserver") + "/cameras?json=y"
+				cameralisturl := viper.GetString("cameraserver") + "/cameras?json=y"
 
-			cameralist := downloadApi(cameralisturl)
+				cameralist := downloadApi(cameralisturl)
 
-			fmt.Printf("cameralist=%s\n", cameralist)
+				fmt.Printf("cameralist=%s\n", cameralist)
 
-			s.ChannelMessageSend(m.ChannelID, cameralist)
+				s.ChannelMessageSend(m.ChannelID, cameralist)
 
-			return
-		}
+				return
+			}
 
-		// take snapshot
-		if cleancommandparts[2] == "snapshot" {
+			// take snapshot
+			if cleancommandparts[2] == "snapshot" {
 
-			// check that camera given in message/command is valid
-			if foundCamera(cleancommandparts[3]) {
+				// check that camera given in message/command is valid
+				if foundCamera(cleancommandparts[3]) {
 
-				// take a snapshot
-				snapshotresult := takeSnapshot(cleancommandparts[3])
+					// take a snapshot
+					snapshotresult := takeSnapshot(cleancommandparts[3])
 
-				// check that return message is valid
-				if strings.HasPrefix(snapshotresult, "files/") {
-					// display link to image
-					s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
-					log.Printf("User:%s ID:%s Snapshot: \"%s\"\n", m.Author.Username, m.Author.ID, viper.GetString("cameraurl")+"/"+snapshotresult)
+					// check that return message is valid
+					if strings.HasPrefix(snapshotresult, "files/") {
+						// display link to image
+						s.ChannelMessageSend(m.ChannelID, viper.GetString("cameraurl")+"/"+snapshotresult)
+						log.Printf("User:%s ID:%s Snapshot: \"%s\"\n", m.Author.Username, m.Author.ID, viper.GetString("cameraurl")+"/"+snapshotresult)
+					} else {
+						// display error message from motioneye-snapshotter
+						s.ChannelMessageSend(m.ChannelID, snapshotresult)
+					}
+
+					// camera is not valid
 				} else {
-					// display error message from motioneye-snapshotter
-					s.ChannelMessageSend(m.ChannelID, snapshotresult)
+					s.ChannelMessageSend(m.ChannelID, "Unknown camera")
 				}
 
-				// camera is not valid
-			} else {
-				s.ChannelMessageSend(m.ChannelID, "Unknown camera")
 			}
 
 		}
-
-	}
+	*/
 }
 
 // make a query to a url
@@ -484,4 +520,65 @@ func loadFile(filename string) (string, error) {
 
 	// return contents and any error
 	return string(filecontents), err
+}
+
+func findCommand(thecommand string) (string, bool, map[string]string) {
+
+	isValidCommand := false
+
+	allparts := strings.Split(thecommand, " ")
+	num_allparts := len(allparts)
+
+	var checkthiscommand string = ""
+
+	var lastvalidcommandfound string = ""
+
+	//var command_num int = 0
+	//var optional_num int = 0
+
+	var option_num int = 0
+	//var options map[string]string
+
+	options := make(map[string]string)
+
+	for i := 0; i < num_allparts; i++ {
+		fmt.Printf("%d =================\n", i)
+		if i == 0 {
+			checkthiscommand = allparts[0]
+		} else {
+			checkthiscommand = checkthiscommand + " " + allparts[i]
+		}
+
+		fmt.Println("findCommand: checking " + checkthiscommand)
+		if _, ok := viper.GetStringMap("commands")[checkthiscommand]; ok {
+			fmt.Println("FOUND COMMAND")
+			lastvalidcommandfound = checkthiscommand
+			isValidCommand = true
+
+			// assume all remaining unparse tokens are optional.  each loop will update the list until no further valid commands are found
+
+			option_num = 0
+			new_options := make(map[string]string)
+			for oi := i + 1; oi < num_allparts; oi++ {
+				fmt.Printf("oi=%d  allparts[%d]=%s\n", oi, oi, allparts[oi])
+				fmt.Println("setting new_options")
+				new_options["{"+strconv.Itoa(option_num)+"}"] = allparts[oi]
+				option_num++
+			}
+
+			fmt.Println("before options = new_options")
+			options = new_options
+			fmt.Println("after options = new_options")
+
+		} else {
+			fmt.Println("NOT FOUND COMMAND")
+		}
+
+	}
+
+	for key, value := range options { // Order not specified
+		fmt.Printf("options: key=%s value=%s\n", key, value)
+	}
+
+	return lastvalidcommandfound, isValidCommand, options
 }
