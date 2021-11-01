@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -eux
+MYAPP="simple-discord-bot"
 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w"
-upx ./simple-discord-bot
+upx ./${MYAPP}
 
-VERSION=$(cat simple-discord-bot.go|grep ^const\ applic|cut -f5 -d\ |sed 's/\"//g')
+VERSION=$(cat ${MYAPP}.go|grep ^const\ applic|cut -f5 -d\ |sed 's/\"//g')
 
-docker build -t smford/simple-discord-bot:${VERSION} -t smford/simple-discord-bot:latest .
-docker push smford/simple-discord-bot:${VERSION}
-docker push smford/simple-discord-bot
+docker build -t smford/${MYAPP}:${VERSION} -t smford/${MYAPP}:latest .
+docker push smford/${MYAPP}:${VERSION}
+docker push smford/${MYAPP}
