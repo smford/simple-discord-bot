@@ -14,13 +14,14 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.7.1"
+const applicationVersion string = "v0.5.8"
 
 var (
 	Token string
@@ -97,6 +98,10 @@ func main() {
 	if err != nil {
 		log.Println("error opening connection,", err)
 		return
+	}
+
+	if viper.GetBool("canaryenable") {
+		go canaryCheckin(viper.GetString("canaryurl"), viper.GetInt("canaryinterval"))
 	}
 
 	log.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
@@ -500,4 +505,26 @@ func findCommand(thecommand string) (string, bool, map[string]string) {
 	}
 
 	return lastvalidcommandfound, isValidCommand, options
+}
+
+func canaryCheckin(url string, interval int) {
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	for _ = range ticker.C {
+		client := http.Client{
+			Timeout: 5 * time.Second,
+		}
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Printf("Error: Could not connect to canary with error:%s", err)
+		} else {
+			fmt.Println("before defer")
+			defer resp.Body.Close()
+			fmt.Println("after defer")
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("Error: Could not checkin to canary with error:%s", err)
+			} else {
+				log.Println("Success: Canary Checkin")
+			}
+		}
+	}
 }

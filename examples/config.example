@@ -1,4 +1,7 @@
 discordtoken: aaaaaBBBBBBBcccccDDDDDD
+canaryenable: true
+canaryinterval: 10
+canaryurl: "http://172.28.0.11:54035/checkin/eeh-bot"
 commandkey: "!eeh"
 commands:
   wiki: "https://eehack.space"
