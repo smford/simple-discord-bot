@@ -21,7 +21,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.8"
+const applicationVersion string = "v0.5.8.1"
 
 var (
 	Token string
@@ -517,9 +517,7 @@ func canaryCheckin(url string, interval int) {
 		if err != nil {
 			log.Printf("Error: Could not connect to canary with error:%s", err)
 		} else {
-			fmt.Println("before defer")
 			defer resp.Body.Close()
-			fmt.Println("after defer")
 			if resp.StatusCode != http.StatusOK {
 				log.Printf("Error: Could not checkin to canary with error:%s", err)
 			} else {
