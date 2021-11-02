@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
@@ -21,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.5.8.1"
+const applicationVersion string = "v0.6"
 
 var (
 	Token string
@@ -102,6 +104,11 @@ func main() {
 
 	if viper.GetBool("canaryenable") {
 		go canaryCheckin(viper.GetString("canaryurl"), viper.GetInt("canaryinterval"))
+	}
+
+	if viper.GetBool("shellenable") && !viper.IsSet("shell") {
+		log.Println("Error: If shellenable=true, a shell must be defined")
+		os.Exit(1)
 	}
 
 	log.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
@@ -208,6 +215,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		issecret := false
 		isapicall := false
 		isfile := false
+		isshell := false
 
 		var messagetosend string
 
@@ -222,6 +230,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "file" {
 				isfile = true
 			}
+			if value == "shell" {
+				isshell = true
+			}
 		}
 
 		// if api and file then return and throw an error, this is not a valid option configuration
@@ -230,10 +241,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		// if shell and (file or api) then return and throw an error, this is not a valid option configuration
+		if isshell && (isfile || isapicall) {
+			log.Printf("Error: Cannot have command shell| with file| or api| on command %s\n", mycommand)
+			return
+		}
+
 		// strip "api|", "file|" and "secret|" from the commands action
 		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "shell|", "", -1)
 
 		// if an api call do it and get response which will become the message sent to the user
 		if isapicall {
@@ -244,11 +262,38 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if isfile {
 			tempcontents, err := loadFile(messagetosend)
 			if err != nil {
-				log.Printf("Error loading file: %s with: %s\n", messagetosend, err)
+				log.Printf("Error loading file: %s with: %v\n", messagetosend, err)
 				return
 			}
 
 			messagetosend = tempcontents
+		}
+
+		if isshell && viper.GetBool("shellenable") {
+			err, stdout, stderr := shellOut(messagetosend)
+			if err != nil {
+				log.Printf("Error: Error executing command:\"%s\" err:%v\n", messagetosend, err)
+			}
+
+			messagetosend = "```\n"
+			if len(stdout) > 0 {
+				messagetosend = messagetosend + stdout
+			}
+			if len(stderr) > 0 {
+				messagetosend = messagetosend + "\nSTDERR:\n-------\n" + stderr
+			}
+			messagetosend = messagetosend + "```\n"
+
+			// if messagetosend is empty, do nothing and return
+			if len(messagetosend) == 8 {
+				return
+			}
+		}
+
+		// do nothing and return when command is a shell and shellenable = false
+		if isshell && !viper.GetBool("shellenable") {
+			log.Println("Error: Cannot run shell command when shellenable = false")
+			return
 		}
 
 		// send the command response, if marked as secret send via private message
@@ -525,4 +570,14 @@ func canaryCheckin(url string, interval int) {
 			}
 		}
 	}
+}
+
+func shellOut(command string) (error, string, string) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := exec.Command(viper.GetString("shell"), "-c", command)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return err, stdout.String(), stderr.String()
 }
