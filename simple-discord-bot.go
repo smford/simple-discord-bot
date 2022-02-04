@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.6"
+const applicationVersion string = "v0.7.1"
 
 var (
 	Token string
@@ -34,6 +34,8 @@ func init() {
 	flag.Bool("displayconfig", false, "Display configuration")
 	flag.Bool("help", false, "Display help")
 	flag.Bool("version", false, "Display version")
+	flag.Int("chunksize", 1980, "Message chunk size, default = 1980")
+	flag.String("splitchar", "\n", "Character to split chunks on, default = \\n")
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
@@ -135,11 +137,14 @@ func displayConfig() {
 // displays help information
 func displayHelp() {
 	message := `
+      --chunksize int       Message chunk size, default = 1980
       --config string       Configuration file: /path/to/file.yaml (default "./config.yaml")
       --displayconfig       Display configuration
       --help                Display help
+      --splitchar string    Character to split chunks on, default = \n
       --version             Display version
 `
+
 	fmt.Println("simple-discord-bot " + applicationVersion)
 	fmt.Println(message)
 }
@@ -275,14 +280,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				log.Printf("Error: Error executing command:\"%s\" err:%v\n", messagetosend, err)
 			}
 
-			messagetosend = "```\n"
+			messagetosend = ""
 			if len(stdout) > 0 {
 				messagetosend = messagetosend + stdout
 			}
 			if len(stderr) > 0 {
 				messagetosend = messagetosend + "\nSTDERR:\n-------\n" + stderr
 			}
-			messagetosend = messagetosend + "```\n"
+			//messagetosend = messagetosend + "```\n"
 
 			// if messagetosend is empty, do nothing and return
 			if len(messagetosend) == 8 {
@@ -296,11 +301,17 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		var usewrapper = false
+
+		if isshell || isfile {
+			usewrapper = true
+		}
+
 		// send the command response, if marked as secret send via private message
 		if issecret {
-			privateMessageCreate(s, m.Author.ID, messagetosend)
+			privateMessageCreate(s, m.Author.ID, messagetosend, usewrapper)
 		} else {
-			s.ChannelMessageSend(m.ChannelID, messagetosend)
+			channelMessageCreate(s, m, messagetosend, usewrapper)
 		}
 
 		return
@@ -477,7 +488,11 @@ func sliceContainsInt(i []interface{}, str string) bool {
 }
 
 // send a private message to a user
-func privateMessageCreate(s *discordgo.Session, userid string, message string) {
+func privateMessageCreate(s *discordgo.Session, userid string, message string, codeblock bool) {
+	var wrapper string
+	if codeblock {
+		wrapper = "```"
+	}
 
 	// create the private message channel to user
 	channel, err := s.UserChannelCreate(userid)
@@ -487,15 +502,67 @@ func privateMessageCreate(s *discordgo.Session, userid string, message string) {
 		return
 	}
 
-	// send the message to the user
-	_, err = s.ChannelMessageSend(channel.ID, message)
-	if err != nil {
-		log.Printf("Error: Cannot send DM to %s with %s\n", userid, err)
-		s.ChannelMessageSend(userid, "Failed to send you a DM. Did you disable DM in your privacy settings?")
+	if len(message) > viper.GetInt("chunksize") {
+		messagechunks := chunkMessage(message, viper.GetString("splitchar"), viper.GetInt("chunksize"))
+
+		var allkeys []int
+
+		for k, _ := range messagechunks {
+			allkeys = append(allkeys, k)
+		}
+
+		sort.Ints(allkeys[:])
+
+		for _, key := range allkeys {
+			_, err = s.ChannelMessageSend(channel.ID, wrapper+messagechunks[key]+wrapper)
+			// todo: catch errors here
+		}
+
+	} else {
+		// send the message to the user
+		_, err = s.ChannelMessageSend(channel.ID, wrapper+message+wrapper)
+		if err != nil {
+			log.Printf("Error: Cannot send DM to %s with %s\n", userid, err)
+			s.ChannelMessageSend(userid, "Failed to send you a DM. Did you disable DM in your privacy settings?")
+		}
 	}
 
 }
 
+// send a message to a channel
+func channelMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate, message string, codeblock bool) {
+	var wrapper string
+	if codeblock {
+		wrapper = "```"
+	}
+
+	var err error
+
+	if len(message) > viper.GetInt("chunksize") {
+		messagechunks := chunkMessage(message, viper.GetString("splitchar"), viper.GetInt("chunksize"))
+		var allkeys []int
+		for k, _ := range messagechunks {
+			allkeys = append(allkeys, k)
+		}
+		sort.Ints(allkeys[:])
+
+		for _, key := range allkeys {
+			_, err = s.ChannelMessageSend(m.ChannelID, wrapper+messagechunks[key]+wrapper)
+			// todo: handle error
+		}
+
+	} else {
+
+		// send the message to the user
+		_, err = s.ChannelMessageSend(m.ChannelID, wrapper+message+wrapper)
+		if err != nil {
+			log.Printf("Error: Cannot send message to channel: %s\n", err)
+		}
+	}
+
+}
+
+// reads a file
 func loadFile(filename string) (string, error) {
 	// clean file name to prevent path traversal
 	cleanFilename := path.Join("/", filename)
@@ -572,6 +639,7 @@ func canaryCheckin(url string, interval int) {
 	}
 }
 
+// runs a shell command and gathers output
 func shellOut(command string) (error, string, string) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -580,4 +648,49 @@ func shellOut(command string) (error, string, string) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return err, stdout.String(), stderr.String()
+}
+
+// splits (chunks) a message
+func chunkMessage(message string, delimchar string, max int) map[int]string {
+	sS := 0
+	finished := false
+	n := 0
+	messagemap := make(map[int]string)
+
+	for finished == false {
+		if sS >= len(message) {
+			break
+		}
+		endpoint := sS + max
+		if endpoint > len(message) {
+			endpoint = len(message)
+			messagemap[n] = message[sS:endpoint]
+			finished = true
+		}
+
+		foundPos := lastFoundBetween(message, delimchar, sS, endpoint)
+
+		// no newline found, so chunk and move on
+		if foundPos == -1 {
+			messagemap[n] = message[sS:endpoint]
+			sS = endpoint
+		} else {
+			messagemap[n] = message[sS : foundPos+1]
+			sS = foundPos + 1
+		}
+		if sS >= len(message) {
+			sS = len(message)
+		}
+		n++
+	}
+	return messagemap
+}
+
+// find the last occurance of a string between a range
+func lastFoundBetween(s, sep string, start int, end int) int {
+	idx := strings.LastIndex(s[start:end], sep)
+	if idx > -1 {
+		idx += start
+	}
+	return idx
 }
