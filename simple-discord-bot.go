@@ -467,12 +467,14 @@ func checkUserPerms(role string, user *discordgo.Member, userid string) bool {
 	if roledetails[0] == "discord" {
 		// check if users allowed via discord roles
 
-		usersDiscordRoles := user.Roles
+		if user != nil {
+			usersDiscordRoles := user.Roles
 
-		for _, v := range usersDiscordRoles {
-			if v == strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)) {
-				// found users discord role
-				return true
+			for _, v := range usersDiscordRoles {
+				if v == strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)) {
+					// found users discord role
+					return true
+				}
 			}
 		}
 
