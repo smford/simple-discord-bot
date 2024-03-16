@@ -395,6 +395,7 @@ func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
 	}
 }
 
+// custom command function for sending messages as the bot
 func sendMessage(s *discordgo.Session, content string) {
 
 	// split the string by whitespace
@@ -410,6 +411,7 @@ func sendMessage(s *discordgo.Session, content string) {
 	s.ChannelMessageSend(channelID, message)
 }
 
+// custom command function for editing messages as the bot
 func editMessage(s *discordgo.Session, content string) {
 
 	// split the string by whitespace
