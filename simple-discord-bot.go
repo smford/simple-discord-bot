@@ -98,6 +98,10 @@ func main() {
 
 	dg.AddHandler(messageCreate)
 
+	dg.AddHandler(addReaction)
+
+	dg.AddHandler(removeReaction)
+
 	err = dg.Open()
 	if err != nil {
 		log.Println("error opening connection,", err)
@@ -346,6 +350,48 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		return
+	}
+}
+
+// discord addReaction handler
+func addReaction(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			// check message id is being tracked
+			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+				// check emoji is being tracked for this message
+				if m["emoji"] == mr.Emoji.Name {
+					// check which type of reaction this is
+					if m["type"] == "role" {
+						//  add role
+						s.GuildMemberRoleAdd(mr.GuildID, mr.UserID, strconv.Itoa(m["role_id"].(int)))
+					}
+				}
+			}
+		} else {
+			fmt.Println("Data is not a map[string]interface{}")
+		}
+	}
+}
+
+// discord removeReaction handler
+func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			// check message id is being tracked
+			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+				// check emoji is being tracked for this message
+				if m["emoji"] == mr.Emoji.Name {
+					// check which type of reaction this is
+					if m["type"] == "role" {
+						// remove role
+						s.GuildMemberRoleRemove(mr.GuildID, mr.UserID, strconv.Itoa(m["role_id"].(int)))
+					}
+				}
+			}
+		} else {
+			fmt.Println("Data is not a map[string]interface{}")
+		}
 	}
 }
 
