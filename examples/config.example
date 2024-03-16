@@ -49,3 +49,14 @@ commandperms:
 discordroles:
   role_1: 123456789123456789
   role_2: 987654321987654321
+reactions:
+    name1:
+      type: "role"
+      message_id: 1234567890
+      emoji: "😂"
+      role_id: 1111111111
+    name2:
+      type: "role"
+      message_id: 1234567890
+      emoji: "😁"
+      role_id: 2222222222
