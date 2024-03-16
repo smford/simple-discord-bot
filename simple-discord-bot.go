@@ -221,6 +221,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		isapicall := false
 		isfile := false
 		isshell := false
+		isfunction := false
 
 		var messagetosend string
 
@@ -238,6 +239,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "shell" {
 				isshell = true
 			}
+			if value == "function" {
+				isfunction = true
+			}
 		}
 
 		// if api and file then return and throw an error, this is not a valid option configuration
@@ -252,11 +256,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		// strip "api|", "file|" and "secret|" from the commands action
+		// if function and (file or api or shell) then return and throw an error, this is not a valid option configuration
+		if isfunction && (isshell || isfile || isapicall) {
+			log.Printf("Error: Cannot have command function| with shell| or file| or api| on command %s\n", mycommand)
+			return
+		}
+
+		// strip "shell|", "api|", "file|", "function|" and "secret|" from the commands action
 		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "shell|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "function|", "", -1)
 
 		// if an api call do it and get response which will become the message sent to the user
 		if isapicall {
@@ -301,6 +312,26 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		if isfunction {
+			lengthOfMessageWithoutCommand := len(viper.GetString("commandkey")) + 1 + len(mycommand) + 1
+			message := m.Content[lengthOfMessageWithoutCommand:]
+
+			functionName := messagetosend
+			// Map function names to actual functions
+			functions := map[string]func(*discordgo.Session, string){
+				"sendMessage": sendMessage,
+				"editMessage": editMessage,
+			}
+
+			// Call the function based on the name
+			if function, ok := functions[functionName]; ok {
+				function(s, message)
+			} else {
+				fmt.Println("Function", functionName, "not found")
+			}
+
+		}
+
 		var usewrapper = false
 
 		if isshell || isfile {
@@ -316,6 +347,39 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		return
 	}
+}
+
+func sendMessage(s *discordgo.Session, content string) {
+
+	// split the string by whitespace
+	words := strings.Split(content, " ")
+
+	// get channel ID
+	channelID := strings.Join(words[0:1], " ")
+
+	// Get the last words ignoring the first
+	message := strings.Join(words[1:], " ")
+
+	// send message to channel
+	s.ChannelMessageSend(channelID, message)
+}
+
+func editMessage(s *discordgo.Session, content string) {
+
+	// split the string by whitespace
+	words := strings.Split(content, " ")
+
+	// get channel ID
+	channelID := strings.Join(words[0:1], " ")
+
+	// get message ID
+	messageID := strings.Join(words[1:2], " ")
+
+	// Get the last words ignoring the first two
+	message := strings.Join(words[2:], " ")
+
+	// edits message in channel
+	s.ChannelMessageEdit(channelID, messageID, message)
 }
 
 // make a query to a url
