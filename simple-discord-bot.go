@@ -318,7 +318,12 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		if isfunction {
 			lengthOfMessageWithoutCommand := len(viper.GetString("commandkey")) + 1 + len(mycommand) + 1
-			message := m.Content[lengthOfMessageWithoutCommand:]
+			var message string
+			if lengthOfMessageWithoutCommand > len(m.Content) {
+				message = ""
+			} else {
+				message = m.Content[lengthOfMessageWithoutCommand:]
+			}
 
 			functionName := messagetosend
 			// Map function names to actual functions
