@@ -508,15 +508,15 @@ func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string)
 		}
 
 		if m.GuildID != "" {
-			channelMessageCreate(s, m, message, false)
+			channelMessageCreate(s, m, "**Emoji for "+guildID+"**\n"+message, false)
 		} else {
-			privateMessageCreate(s, m.Author.ID, message, true)
+			privateMessageCreate(s, m.Author.ID, "**Emoji for "+guildID+"**\n```"+message+"```", false)
 		}
 	} else {
 		if m.GuildID != "" {
 			channelMessageCreate(s, m, "Guild/Server ID not found", false)
 		} else {
-			privateMessageCreate(s, m.Author.ID, "Guild/Server ID not found", true)
+			privateMessageCreate(s, m.Author.ID, "Guild/Server ID not found", false)
 		}
 	}
 }
