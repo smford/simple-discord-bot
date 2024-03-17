@@ -359,11 +359,13 @@ func addReaction(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
 		if m, ok := v.(map[string]interface{}); ok {
 			// check message id is being tracked
 			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+
 				// check emoji is being tracked for this message
-				if m["emoji"] == mr.Emoji.Name {
+				emoji := strings.Split(m["emoji"].(string), ":")
+				if emoji[0] == mr.Emoji.Name {
 					// check which type of reaction this is
 					if m["type"] == "role" {
-						//  add role
+						// add role
 						s.GuildMemberRoleAdd(mr.GuildID, mr.UserID, strconv.Itoa(m["role_id"].(int)))
 					}
 				}
@@ -380,8 +382,10 @@ func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
 		if m, ok := v.(map[string]interface{}); ok {
 			// check message id is being tracked
 			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+
 				// check emoji is being tracked for this message
-				if m["emoji"] == mr.Emoji.Name {
+				emoji := strings.Split(m["emoji"].(string), ":")
+				if emoji[0] == mr.Emoji.Name {
 					// check which type of reaction this is
 					if m["type"] == "role" {
 						// remove role
