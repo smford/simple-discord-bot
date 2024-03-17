@@ -327,14 +327,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 			functionName := messagetosend
 			// Map function names to actual functions
-			functions := map[string]func(*discordgo.Session, string){
+			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string){
 				"sendMessage": sendMessage,
 				"editMessage": editMessage,
 			}
 
 			// Call the function based on the name
 			if function, ok := functions[functionName]; ok {
-				function(s, message)
+				function(s, m, message)
 			} else {
 				fmt.Println("Function", functionName, "not found")
 			}
@@ -347,11 +347,13 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			usewrapper = true
 		}
 
-		// send the command response, if marked as secret send via private message
-		if issecret {
-			privateMessageCreate(s, m.Author.ID, messagetosend, usewrapper)
-		} else {
-			channelMessageCreate(s, m, messagetosend, usewrapper)
+		// send the command response, if marked as secret send via private message do not send if command is a custom function
+		if !isfunction {
+			if issecret {
+				privateMessageCreate(s, m.Author.ID, messagetosend, usewrapper)
+			} else {
+				channelMessageCreate(s, m, messagetosend, usewrapper)
+			}
 		}
 
 		return
@@ -405,7 +407,7 @@ func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
 }
 
 // custom command function for sending messages as the bot
-func sendMessage(s *discordgo.Session, content string) {
+func sendMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
 
 	// split the string by whitespace
 	words := strings.Split(content, " ")
@@ -421,7 +423,7 @@ func sendMessage(s *discordgo.Session, content string) {
 }
 
 // custom command function for editing messages as the bot
-func editMessage(s *discordgo.Session, content string) {
+func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
 
 	// split the string by whitespace
 	words := strings.Split(content, " ")
