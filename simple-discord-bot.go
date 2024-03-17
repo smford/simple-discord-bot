@@ -330,6 +330,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string){
 				"sendMessage": sendMessage,
 				"editMessage": editMessage,
+				"listEmoji":   listEmoji,
 			}
 
 			// Call the function based on the name
@@ -439,6 +440,50 @@ func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, content strin
 
 	// edits message in channel
 	s.ChannelMessageEdit(channelID, messageID, message)
+}
+
+// custom command function to list all Emoji
+func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+
+	words := strings.Split(content, " ")
+
+	// get guild ID from message
+	guildID := strings.Join(words[0:1], " ")
+
+	//	var guildID string = m.GuildID
+
+	if guildID == "" {
+		guildID = m.GuildID
+	}
+
+	if guildID != "" {
+		emojis, err := s.GuildEmojis(guildID)
+		if err != nil {
+			log.Printf("Error: could not get emoji with error:%s", err)
+		}
+
+		var message string
+
+		for _, emoji := range emojis {
+			if m.GuildID != "" {
+				message += "<:" + emoji.Name + ":" + emoji.ID + ">  `" + emoji.ID + "    " + emoji.Name + "`\n"
+			} else {
+				message += emoji.ID + "    " + emoji.Name + "\n"
+			}
+		}
+
+		if m.GuildID != "" {
+			channelMessageCreate(s, m, message, false)
+		} else {
+			privateMessageCreate(s, m.Author.ID, message, true)
+		}
+	} else {
+		if m.GuildID != "" {
+			channelMessageCreate(s, m, "Guild/Server ID not found", false)
+		} else {
+			privateMessageCreate(s, m.Author.ID, "Guild/Server ID not found", true)
+		}
+	}
 }
 
 // make a query to a url
