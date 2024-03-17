@@ -118,6 +118,10 @@ func main() {
 	}
 
 	log.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
+
+	// check tracked reactions
+	checkReactions(dg)
+
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
@@ -405,6 +409,37 @@ func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
 			fmt.Println("Data is not a map[string]interface{}")
 		}
 	}
+}
+
+// check reactions
+func checkReactions(s *discordgo.Session) {
+	fmt.Println("Checking reactions for tracked messages")
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			channelID := strconv.Itoa(m["channel_id"].(int))
+			messageID := strconv.Itoa(m["message_id"].(int))
+
+			// check emoji is being tracked for this message
+			messageReactions, err := s.MessageReactions(channelID, messageID, m["emoji"].(string), 100, "", "")
+			if err != nil {
+				log.Printf("Error: Checking reactions channelID:%s messageID:%s, Error:%s\n", channelID, messageID, err)
+			}
+			var hasBotReaction bool = false
+			for _, user := range messageReactions {
+				if user.ID == s.State.User.ID {
+					hasBotReaction = true
+				}
+			}
+
+			if !hasBotReaction {
+				s.MessageReactionAdd(channelID, messageID, m["emoji"].(string))
+				// pause to make sure reactions are added in order
+				time.Sleep(1 * time.Second)
+			}
+
+		}
+	}
+
 }
 
 // custom command function for sending messages as the bot
