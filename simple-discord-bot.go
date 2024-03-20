@@ -702,7 +702,7 @@ func isRoleValid(role string) bool {
 	}
 
 	// check if normal role
-	if viper.IsSet("permissions") {
+	if viper.IsSet("commandroles") {
 		if _, ok := viper.GetStringMap("commandroles")[roledetails[0]]; ok {
 			// found valid role in permissions
 			return true
