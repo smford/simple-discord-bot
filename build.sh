@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eux
 MYAPP="simple-discord-bot"
-GOOS=linux GOARCH=amd64 go build -ldflags "-s -w"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -v ./...
 upx ./${MYAPP}
 
 VERSION=$(cat ${MYAPP}.go|grep ^const\ applic|cut -f5 -d\ |sed 's/\"//g')
