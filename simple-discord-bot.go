@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.7.2"
+const applicationVersion string = "v0.7.3"
 
 var (
 	Token string
