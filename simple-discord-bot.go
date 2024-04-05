@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.7.2"
+const applicationVersion string = "v0.7.3"
 
 var (
 	Token string
@@ -98,6 +98,10 @@ func main() {
 
 	dg.AddHandler(messageCreate)
 
+	dg.AddHandler(addReaction)
+
+	dg.AddHandler(removeReaction)
+
 	err = dg.Open()
 	if err != nil {
 		log.Println("error opening connection,", err)
@@ -114,6 +118,10 @@ func main() {
 	}
 
 	log.Printf("simple-discord-bot %s is now running.  Press CTRL-C to exit.\n", applicationVersion)
+
+	// check tracked reactions
+	checkReactions(dg)
+
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
@@ -221,6 +229,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		isapicall := false
 		isfile := false
 		isshell := false
+		isfunction := false
 
 		var messagetosend string
 
@@ -238,6 +247,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if value == "shell" {
 				isshell = true
 			}
+			if value == "function" {
+				isfunction = true
+			}
 		}
 
 		// if api and file then return and throw an error, this is not a valid option configuration
@@ -252,11 +264,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-		// strip "api|", "file|" and "secret|" from the commands action
+		// if function and (file or api or shell) then return and throw an error, this is not a valid option configuration
+		if isfunction && (isshell || isfile || isapicall) {
+			log.Printf("Error: Cannot have command function| with shell| or file| or api| on command %s\n", mycommand)
+			return
+		}
+
+		// strip "shell|", "api|", "file|", "function|" and "secret|" from the commands action
 		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
 		messagetosend = strings.Replace(messagetosend, "shell|", "", -1)
+		messagetosend = strings.Replace(messagetosend, "function|", "", -1)
 
 		// if an api call do it and get response which will become the message sent to the user
 		if isapicall {
@@ -301,20 +320,204 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
+		if isfunction {
+			lengthOfMessageWithoutCommand := len(viper.GetString("commandkey")) + 1 + len(mycommand) + 1
+			var message string
+			if lengthOfMessageWithoutCommand > len(m.Content) {
+				message = ""
+			} else {
+				message = m.Content[lengthOfMessageWithoutCommand:]
+			}
+
+			functionName := messagetosend
+			// Map function names to actual functions
+			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string){
+				"sendMessage": sendMessage,
+				"editMessage": editMessage,
+				"listEmoji":   listEmoji,
+			}
+
+			// Call the function based on the name
+			if function, ok := functions[functionName]; ok {
+				function(s, m, message)
+			} else {
+				fmt.Println("Function", functionName, "not found")
+			}
+
+		}
+
 		var usewrapper = false
 
 		if isshell || isfile {
 			usewrapper = true
 		}
 
-		// send the command response, if marked as secret send via private message
-		if issecret {
-			privateMessageCreate(s, m.Author.ID, messagetosend, usewrapper)
-		} else {
-			channelMessageCreate(s, m, messagetosend, usewrapper)
+		// send the command response, if marked as secret send via private message do not send if command is a custom function
+		if !isfunction {
+			if issecret {
+				privateMessageCreate(s, m.Author.ID, messagetosend, usewrapper)
+			} else {
+				channelMessageCreate(s, m, messagetosend, usewrapper)
+			}
 		}
 
 		return
+	}
+}
+
+// discord addReaction handler
+func addReaction(s *discordgo.Session, mr *discordgo.MessageReactionAdd) {
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			// check message id is being tracked
+			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+
+				// check emoji is being tracked for this message
+				emoji := strings.Split(m["emoji"].(string), ":")
+				if emoji[0] == mr.Emoji.Name {
+					// check which type of reaction this is
+					if m["type"] == "role" {
+						// add role
+						s.GuildMemberRoleAdd(mr.GuildID, mr.UserID, strconv.Itoa(m["role_id"].(int)))
+					}
+				}
+			}
+		} else {
+			fmt.Println("Data is not a map[string]interface{}")
+		}
+	}
+}
+
+// discord removeReaction handler
+func removeReaction(s *discordgo.Session, mr *discordgo.MessageReactionRemove) {
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			// check message id is being tracked
+			if strconv.Itoa(m["message_id"].(int)) == mr.MessageID {
+
+				// check emoji is being tracked for this message
+				emoji := strings.Split(m["emoji"].(string), ":")
+				if emoji[0] == mr.Emoji.Name {
+					// check which type of reaction this is
+					if m["type"] == "role" {
+						// remove role
+						s.GuildMemberRoleRemove(mr.GuildID, mr.UserID, strconv.Itoa(m["role_id"].(int)))
+					}
+				}
+			}
+		} else {
+			fmt.Println("Data is not a map[string]interface{}")
+		}
+	}
+}
+
+// check reactions
+func checkReactions(s *discordgo.Session) {
+	fmt.Println("Checking reactions for tracked messages")
+	for _, v := range viper.GetStringMap("reactions") {
+		if m, ok := v.(map[string]interface{}); ok {
+			channelID := strconv.Itoa(m["channel_id"].(int))
+			messageID := strconv.Itoa(m["message_id"].(int))
+
+			// check emoji is being tracked for this message
+			messageReactions, err := s.MessageReactions(channelID, messageID, m["emoji"].(string), 100, "", "")
+			if err != nil {
+				log.Printf("Error: Checking reactions channelID:%s messageID:%s, Error:%s\n", channelID, messageID, err)
+			}
+			var hasBotReaction bool = false
+			for _, user := range messageReactions {
+				if user.ID == s.State.User.ID {
+					hasBotReaction = true
+				}
+			}
+
+			if !hasBotReaction {
+				s.MessageReactionAdd(channelID, messageID, m["emoji"].(string))
+				// pause to make sure reactions are added in order
+				time.Sleep(1 * time.Second)
+			}
+
+		}
+	}
+
+}
+
+// custom command function for sending messages as the bot
+func sendMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+
+	// split the string by whitespace
+	words := strings.Split(content, " ")
+
+	// get channel ID
+	channelID := strings.Join(words[0:1], " ")
+
+	// Get the last words ignoring the first
+	message := strings.Join(words[1:], " ")
+
+	// send message to channel
+	s.ChannelMessageSend(channelID, message)
+}
+
+// custom command function for editing messages as the bot
+func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+
+	// split the string by whitespace
+	words := strings.Split(content, " ")
+
+	// get channel ID
+	channelID := strings.Join(words[0:1], " ")
+
+	// get message ID
+	messageID := strings.Join(words[1:2], " ")
+
+	// Get the last words ignoring the first two
+	message := strings.Join(words[2:], " ")
+
+	// edits message in channel
+	s.ChannelMessageEdit(channelID, messageID, message)
+}
+
+// custom command function to list all Emoji
+func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+
+	words := strings.Split(content, " ")
+
+	// get guild ID from message
+	guildID := strings.Join(words[0:1], " ")
+
+	//	var guildID string = m.GuildID
+
+	if guildID == "" {
+		guildID = m.GuildID
+	}
+
+	if guildID != "" {
+		emojis, err := s.GuildEmojis(guildID)
+		if err != nil {
+			log.Printf("Error: could not get emoji with error:%s", err)
+		}
+
+		var message string
+
+		for _, emoji := range emojis {
+			if m.GuildID != "" {
+				message += "<:" + emoji.Name + ":" + emoji.ID + ">  `" + emoji.ID + "    " + emoji.Name + "`\n"
+			} else {
+				message += emoji.ID + "    " + emoji.Name + "\n"
+			}
+		}
+
+		if m.GuildID != "" {
+			channelMessageCreate(s, m, "**Emoji for "+guildID+"**\n"+message, false)
+		} else {
+			privateMessageCreate(s, m.Author.ID, "**Emoji for "+guildID+"**\n```"+message+"```", false)
+		}
+	} else {
+		if m.GuildID != "" {
+			channelMessageCreate(s, m, "Guild/Server ID not found", false)
+		} else {
+			privateMessageCreate(s, m.Author.ID, "Guild/Server ID not found", false)
+		}
 	}
 }
 
@@ -403,12 +606,14 @@ func checkUserPerms(role string, user *discordgo.Member, userid string) bool {
 	if roledetails[0] == "discord" {
 		// check if users allowed via discord roles
 
-		usersDiscordRoles := user.Roles
+		if user != nil {
+			usersDiscordRoles := user.Roles
 
-		for _, v := range usersDiscordRoles {
-			if v == strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)) {
-				// found users discord role
-				return true
+			for _, v := range usersDiscordRoles {
+				if v == strconv.Itoa(viper.GetStringMap("discordroles")[roledetails[1]].(int)) {
+					// found users discord role
+					return true
+				}
 			}
 		}
 
