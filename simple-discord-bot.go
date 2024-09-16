@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -23,7 +24,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.7.4"
+const applicationVersion string = "v0.7.5"
 
 var (
 	Token string
@@ -302,16 +303,19 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 			functionName := prepareTemplate(viper.GetString("commands."+mycommand+".function"), commandoptions)
 			// Map function names to actual functions
-			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string){
-				"sendMessage": sendMessage,
-				"editMessage": editMessage,
-				"listEmoji":   listEmoji,
-				"showHelp":    showHelp,
+			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string, string){
+				"sendMessage":      sendMessage,
+				"editMessage":      editMessage,
+				"listEmoji":        listEmoji,
+				"showHelp":         showHelp,
+				"apiHomeAssistant": apiHomeAssistant,
+				"cameraSnapshot":   cameraSnapshot,
+				"cameraList":       cameraList,
 			}
 
 			// Call the function based on the name
 			if function, ok := functions[functionName]; ok {
-				function(s, m, message)
+				function(s, m, mycommand, message)
 			} else {
 				fmt.Println("Function", functionName, "not found")
 			}
@@ -424,7 +428,7 @@ func checkReactions(s *discordgo.Session) {
 }
 
 // custom command function for sending messages as the bot
-func sendMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+func sendMessage(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
 
 	// split the string by whitespace
 	words := strings.Split(content, " ")
@@ -440,7 +444,7 @@ func sendMessage(s *discordgo.Session, m *discordgo.MessageCreate, content strin
 }
 
 // custom command function for editing messages as the bot
-func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
 
 	// split the string by whitespace
 	words := strings.Split(content, " ")
@@ -459,7 +463,7 @@ func editMessage(s *discordgo.Session, m *discordgo.MessageCreate, content strin
 }
 
 // custom command function to list all Emoji
-func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
 
 	words := strings.Split(content, " ")
 
@@ -502,8 +506,129 @@ func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string)
 	}
 }
 
-// custom command function to list all Emoji
-func showHelp(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+type SnapshotResponse struct {
+	EventID string `json:"event_id"`
+}
+
+// custom command function to take a camera snapshot
+func cameraSnapshot(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
+
+	words := strings.Split(content, " ")
+
+	// get camera from message
+	camera := strings.Join(words[0:1], " ")
+
+	if camera != "" {
+
+		// Define the API endpoint
+		url := viper.GetString("cameraapiurl") + "/api/events/" + camera + "/Discord Snapshot/create"
+
+		// Create a POST request
+		req, err := http.NewRequest("POST", url, nil)
+		if err != nil {
+			log.Printf("Error creating request: %v", err)
+			privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error creating request: %v", err), false)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		// Send the POST request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error sending POST request: %v", err)
+			privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error sending POST request: %v", err), false)
+		}
+		defer resp.Body.Close()
+
+		// Check if the request was successful
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Request failed with status: %d", resp.StatusCode)
+			privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Request failed with status: %d", resp.StatusCode), false)
+		}
+
+		// Read the response body
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Error reading response body: %v", err)
+			privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error reading response body: %v", err), false)
+		}
+
+		// Parse the JSON response
+		var response SnapshotResponse
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			log.Printf("Error parsing JSON: %v", err)
+			privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error parsing JSON: %v", err), false)
+		}
+		privateMessageCreate(s, m.Author.ID, viper.GetString("camerasnapshoturl")+"/"+camera+"-"+response.EventID+".jpg", false)
+
+	} else {
+		privateMessageCreate(s, m.Author.ID, "Camera not found", false)
+	}
+}
+
+// custom command function to list cameras
+func cameraList(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
+
+	// Define the API endpoint
+	url := viper.GetString("cameraapiurl") + "/api/config"
+
+	// Create a GET request
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("Error creating request: %v", err)
+		privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error creating request: %v", err), false)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the GET request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error sending GET request: %v", err)
+		privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error sending GET request: %v", err), false)
+	}
+	defer resp.Body.Close()
+
+	// Check if the request was successful
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Request failed with status: %d", resp.StatusCode)
+		privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Request failed with status: %d", resp.StatusCode), false)
+	}
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error reading response body: %v", err)
+		privateMessageCreate(s, m.Author.ID, fmt.Sprintf("Error reading response body: %v", err), false)
+	}
+
+	var data map[string]interface{}
+
+	// Parse the JSON data
+	err2 := json.Unmarshal([]byte(body), &data)
+	if err != nil {
+		log.Fatalf("Error parsing JSON: %v", err2)
+	}
+
+	// Extract the cameras object
+	cameras, ok := data["cameras"].(map[string]interface{})
+	if !ok {
+		log.Fatalf("Error extracting cameras data")
+	}
+
+	// Concatenate keys into a single string with newline characters
+	var result string
+	for key := range cameras {
+		result += key + "\n"
+	}
+
+	privateMessageCreate(s, m.Author.ID, "**Camera List**\n"+result, false)
+
+}
+
+// custom command function to list all commands based on user permission
+func showHelp(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
 
 	user, _ := s.GuildMember(viper.GetString("defaultserverid"), m.Author.ID)
 
@@ -561,6 +686,71 @@ func showHelp(s *discordgo.Session, m *discordgo.MessageCreate, content string) 
 	helpMessage = "Help Commands:\n--------------\n" + helpMessage
 
 	privateMessageCreate(s, m.Author.ID, helpMessage, true)
+}
+
+// custom command function to call the Home Assistant API
+func apiHomeAssistant(s *discordgo.Session, m *discordgo.MessageCreate, command string, content string) {
+
+	channelID := m.Message.ChannelID
+
+	if viper.IsSet("commands." + command + ".channels." + channelID) {
+		parameters := viper.GetStringMap("commands." + command)["channels"].(map[string]interface{})[channelID].(map[string]interface{})["parameters"]
+
+		parameterList := parameters.([]interface{})
+
+		for _, param := range parameterList {
+			makeHomeAssistantAPIRequest(param.(string))
+		}
+
+	}
+}
+
+// make Home Assistant API request
+func makeHomeAssistantAPIRequest(param string) {
+	url := viper.GetString("homeassistanturl")
+
+	// Check if the url ends with "/"
+	if !strings.HasSuffix(url, "/") {
+		url += "/"
+	}
+
+	// Check if the param starts with "/" and remove
+	param = strings.TrimPrefix(param, "/")
+
+	token := viper.GetString("homeassistanttoken")
+
+	// JSON payload for calling the script (if needed)
+	payload := []byte(`{}`)
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("POST", url+param, ioutil.NopCloser(bytes.NewBuffer(payload)))
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		return
+	}
+
+	// Set the required headers
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read and print the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return
+	}
+
+	fmt.Println("Response:", string(body))
+
 }
 
 // make a query to a url
