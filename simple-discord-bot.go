@@ -23,7 +23,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const applicationVersion string = "v0.7.3"
+const applicationVersion string = "v0.7.4"
 
 var (
 	Token string
@@ -174,6 +174,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if guild != nil {
 		author, _ = s.GuildMember(guild.ID, m.Author.ID)
+	} else {
+		author, _ = s.GuildMember(viper.GetString("defaultserverid"), m.Author.ID)
 	}
 
 	// ignore commands we don't care about
@@ -189,33 +191,34 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// mycommand = the valid command found
 	// iscommandvalid = is command valid?
-	// myoptions = map of all options, ready for templating
-	mycommand, iscommandvalid, myoptions := findCommand(cleancommand)
+	// commandoptions = map of all options, ready for templating
+	mycommand, iscommandvalid, commandoptions := findCommand(cleancommand)
 
 	if !iscommandvalid {
 		log.Printf("User:%s ID:%s Command:\"%s\" Status:\"Command is invalid\"\n", m.Author.Username, m.Author.ID, m.Content)
 		return
 	}
 
-	aftertemplate := viper.GetStringMap("commands")[mycommand]
-
-	// do all the templating, replace {0} etc in the command with the options the user has given
-	for key, value := range myoptions {
-		aftertemplate = strings.Replace(aftertemplate.(string), key, value, -1)
-	}
-
 	// find role for the primary command
-	commandrole := getCommandRole(mycommand)
+	commandRoles := viper.GetStringSlice("commands." + mycommand + ".roles")
 
 	// check if a role has been assigned to the command, and ignore if none has been set or role is invalid
-	if !isRoleValid(commandrole) {
-		// role doesn't exist
-		log.Printf("Error: commandrole doesnt exist for %s", mycommand)
-		return
+	for _, role := range commandRoles {
+		if !isRoleValid(role) {
+			// role doesn't exist
+			log.Printf("Error: role (%s) not valid do not exist for command %s", role, mycommand)
+			return
+		}
 	}
 
-	// check if user has permissions to execute a command
-	if !checkUserPerms(commandrole, author, m.Author.ID) {
+	// check if user has permission to execute a command
+	var canRun bool = false
+	for _, role := range commandRoles {
+		if checkUserPerms(role, author, m.Author.ID) {
+			canRun = true
+		}
+	}
+	if !canRun {
 		log.Printf("Error: User:%s ID:%s Does not have permission to run Command: \"%s\"\n", m.Author.Username, m.Author.ID, m.Content)
 		return
 	}
@@ -223,78 +226,50 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// check if command is valid and do appropriate text response
 	if _, ok := viper.GetStringMap("commands")[mycommand]; ok {
 
-		commandmessageparts := strings.Split(aftertemplate.(string), "|")
-
-		issecret := false
-		isapicall := false
-		isfile := false
-		isshell := false
-		isfunction := false
-
-		var messagetosend string
-
-		// discern whether command is an apicall or secret
-		for _, value := range commandmessageparts {
-			if value == "secret" {
-				issecret = true
-			}
-			if value == "api" {
-				isapicall = true
-			}
-			if value == "file" {
-				isfile = true
-			}
-			if value == "shell" {
-				isshell = true
-			}
-			if value == "function" {
-				isfunction = true
-			}
-		}
+		ismessage := viper.IsSet("commands." + mycommand + ".message")
+		isapicall := viper.IsSet("commands." + mycommand + ".api")
+		isfile := viper.IsSet("commands." + mycommand + ".file")
+		isshell := viper.IsSet("commands." + mycommand + ".shell")
+		isfunction := viper.IsSet("commands." + mycommand + ".function")
+		issecret := viper.GetBool("commands." + mycommand + ".secret")
 
 		// if api and file then return and throw an error, this is not a valid option configuration
 		if isapicall && isfile {
-			log.Printf("Error: Cannot have command api| with file| on command %s\n", mycommand)
+			log.Printf("Error: Cannot have command api with file on command %s\n", mycommand)
 			return
 		}
 
 		// if shell and (file or api) then return and throw an error, this is not a valid option configuration
 		if isshell && (isfile || isapicall) {
-			log.Printf("Error: Cannot have command shell| with file| or api| on command %s\n", mycommand)
+			log.Printf("Error: Cannot have command shell with file or api on command %s\n", mycommand)
 			return
 		}
 
 		// if function and (file or api or shell) then return and throw an error, this is not a valid option configuration
 		if isfunction && (isshell || isfile || isapicall) {
-			log.Printf("Error: Cannot have command function| with shell| or file| or api| on command %s\n", mycommand)
+			log.Printf("Error: Cannot have command function with shell or file or api on command %s\n", mycommand)
 			return
 		}
 
-		// strip "shell|", "api|", "file|", "function|" and "secret|" from the commands action
-		messagetosend = strings.Replace(aftertemplate.(string), "api|", "", -1)
-		messagetosend = strings.Replace(messagetosend, "file|", "", -1)
-		messagetosend = strings.Replace(messagetosend, "secret|", "", -1)
-		messagetosend = strings.Replace(messagetosend, "shell|", "", -1)
-		messagetosend = strings.Replace(messagetosend, "function|", "", -1)
+		var messagetosend string
 
-		// if an api call do it and get response which will become the message sent to the user
-		if isapicall {
-			messagetosend = downloadApi(messagetosend)
-		}
+		if ismessage {
+			messagetosend = prepareTemplate(viper.GetString("commands."+mycommand+".message"), commandoptions)
+		} else if isapicall {
+			// if an api call do it and get response which will become the message sent to the user
+			messagetosend = downloadApi(prepareTemplate(viper.GetString("commands."+mycommand+".api"), commandoptions))
 
-		// if we need to load a files contents into message to send
-		if isfile {
-			tempcontents, err := loadFile(messagetosend)
+		} else if isfile {
+			// if we need to load a files contents into message to send
+			tempcontents, err := loadFile(prepareTemplate(viper.GetString("commands."+mycommand+".file"), commandoptions))
 			if err != nil {
 				log.Printf("Error loading file: %s with: %v\n", messagetosend, err)
 				return
 			}
 
 			messagetosend = tempcontents
-		}
-
-		if isshell && viper.GetBool("shellenable") {
-			err, stdout, stderr := shellOut(messagetosend)
+		} else if isshell && viper.GetBool("shellenable") {
+			err, stdout, stderr := shellOut(prepareTemplate(viper.GetString("commands."+mycommand+".shell"), commandoptions))
 			if err != nil {
 				log.Printf("Error: Error executing command:\"%s\" err:%v\n", messagetosend, err)
 			}
@@ -312,15 +287,11 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			if len(messagetosend) == 8 {
 				return
 			}
-		}
-
-		// do nothing and return when command is a shell and shellenable = false
-		if isshell && !viper.GetBool("shellenable") {
+		} else if isshell && !viper.GetBool("shellenable") {
+			// do nothing and return when command is a shell and shellenable = false
 			log.Println("Error: Cannot run shell command when shellenable = false")
 			return
-		}
-
-		if isfunction {
+		} else if isfunction {
 			lengthOfMessageWithoutCommand := len(viper.GetString("commandkey")) + 1 + len(mycommand) + 1
 			var message string
 			if lengthOfMessageWithoutCommand > len(m.Content) {
@@ -329,12 +300,13 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 				message = m.Content[lengthOfMessageWithoutCommand:]
 			}
 
-			functionName := messagetosend
+			functionName := prepareTemplate(viper.GetString("commands."+mycommand+".function"), commandoptions)
 			// Map function names to actual functions
 			functions := map[string]func(*discordgo.Session, *discordgo.MessageCreate, string){
 				"sendMessage": sendMessage,
 				"editMessage": editMessage,
 				"listEmoji":   listEmoji,
+				"showHelp":    showHelp,
 			}
 
 			// Call the function based on the name
@@ -363,6 +335,15 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		return
 	}
+}
+
+func prepareTemplate(message string, commandoptions map[string]string) string {
+	// do all the templating, replace {0} etc in the command with the options the user has given
+	for key, value := range commandoptions {
+		message = strings.Replace(message, key, value, -1)
+	}
+
+	return message
 }
 
 // discord addReaction handler
@@ -521,6 +502,67 @@ func listEmoji(s *discordgo.Session, m *discordgo.MessageCreate, content string)
 	}
 }
 
+// custom command function to list all Emoji
+func showHelp(s *discordgo.Session, m *discordgo.MessageCreate, content string) {
+
+	user, _ := s.GuildMember(viper.GetString("defaultserverid"), m.Author.ID)
+
+	var helpMessage string
+
+	commandkey := viper.GetString("commandkey")
+
+	allCommands := viper.GetStringMap("commands")
+
+	// Loop through the commands map
+	for command, info := range allCommands {
+
+		// check if user has permission to execute a command
+		var canRun bool = false
+
+		// Access the "roles" for each command
+		roles, ok := info.(map[string]interface{})["roles"]
+		if !ok {
+			fmt.Printf("Help information not found for command %s\n", command)
+			continue
+		}
+
+		for _, role := range roles.([]interface{}) {
+			fmt.Println(role.(string))
+			if checkUserPerms(role.(string), user, m.Author.ID) {
+				canRun = true
+			}
+		}
+
+		if canRun {
+			// Access the "help" field for each command
+			help, ok := info.(map[string]interface{})["help"].(string)
+			if !ok {
+				fmt.Printf("Help information not found for command %s\n", command)
+				continue
+			}
+
+			helpMessage += commandkey + " " + command + strings.Repeat(" ", 30-len(command)) + "- " + help + "\n"
+			fmt.Printf("Command: %s\nHelp: %s\n\n", command, help)
+		}
+
+	}
+
+	// sort commands into alphabetical order
+
+	// Split the string into lines
+	lines := strings.Split(helpMessage, "\n")
+
+	// Sort the lines alphabetically
+	sort.Strings(lines)
+
+	// Join the sorted lines back together
+	helpMessage = strings.Join(lines, "\n")
+
+	helpMessage = "Help Commands:\n--------------\n" + helpMessage
+
+	privateMessageCreate(s, m.Author.ID, helpMessage, true)
+}
+
 // make a query to a url
 func downloadApi(url string) string {
 	resp, err := http.Get(url)
@@ -577,16 +619,6 @@ func foundCamera(camera string) bool {
 		}
 	}
 	return false
-}
-
-// tells us what role a command requires
-func getCommandRole(command string) string {
-	if viper.IsSet("commandperms") {
-		if _, ok := viper.GetStringMap("commandperms")[command]; ok {
-			return viper.GetStringMap("commandperms")[command].(string)
-		}
-	}
-	return "no role set"
 }
 
 // check if a user has a particular role, if they have a role return true
@@ -672,7 +704,7 @@ func isRoleValid(role string) bool {
 	// check if normal role
 	if viper.IsSet("commandroles") {
 		if _, ok := viper.GetStringMap("commandroles")[roledetails[0]]; ok {
-			// found valid role in commandroles
+			// found valid role in permissions
 			return true
 		}
 	}

@@ -1,25 +1,100 @@
 discordtoken: aaaaaBBBBBBBcccccDDDDDD
+defaultserverid: 123123123123123123
 canaryenable: true
 canaryinterval: 10
 canaryurl: "http://172.28.0.10:54035/checkin/eeh-bot"
 shellenable: true
 shell: sh
 commandkey: "!eeh"
+
 commands:
-  wiki: "https://eehack.space"
-  www: "https://eehack.space"
-  web: "https://eehack.space"
-  status: "https://status.eehack.space/"
-  gatecode: "secret|Gatecode: `1234`"
-  botwatcher: "https://botwatcher.eehack.space/status"
-  help: "secret|file|/path/to/help.txt"
-  "camera list": "api|http://172.28.0.10:54036/cameras"
-  "camera snapshot": "secret|api|http://172.28.0.10:54036/snap?camera={0}"
-  "server ip": "api|https://api.ipify.org"
-  "my name is": "secret|Your first name is {0} and surname is {1}"
-  "ls -la": "shell|ls -la"
-  "sendmessage": "secret|function|sendMessage"
-  "editmessage": "secret|function|editMessage"
+  "wiki":
+    help: "EEH Wiki"
+    message: "https://eehack.space"
+    roles:
+      - all
+  "web":
+    help: "Website"
+    message: "https://eehack.space"
+    roles:
+      - all
+  "www":
+    help: "Website"
+    message: "https://eehack.space"
+    roles:
+      - all
+  "gatecode":
+    help: "Display car park gatecode"
+    message: "Gatecode `0451`"
+    secret: true
+    roles:
+      - discord:hackers
+      - discord:matt
+  "status":
+    help: "Status"
+    message: "https://status.eehack.space/"
+    roles:
+      - all
+  "botwatcher":
+    help: "Botwatcher"
+    message: "https://botwatcher.eehack.space/status"
+    roles:
+      - discord:matt
+      - discord:vicky
+  "help":
+    help: "Shows this!"
+    function: "showHelp"
+    secret: true
+    roles:
+      - all
+  "instructions":
+    help: "Shows some instructions"
+    file: "/path/to/instructions.txt"
+    secret: true
+    roles:
+      - all
+  "camera snapshot":
+    help: "Take a snapshot of the camera"
+    api: "http://172.28.0.10:54036/snap?camera={0}"
+    secret: true
+    roles:
+      - admin
+  "camera list":
+    help: "Display list of cameras"
+    api: "http://172.28.0.10:54036/cameras"
+    roles:
+      - admin
+  "server ip":
+    help: "Shows external IP"
+    api: "https://api.ipify.org"
+    secret: true
+    roles:
+      - admin
+  "my name is":
+    help: "Shows your name if you type !cmd my name is Joe Bloggs"
+    message: "Your first name is {0} and surname is {1}"
+    secret: true
+    roles:
+      - admin
+  "ls -la":
+    help: "Shows file listing"
+    shell: "ls -la"
+    secret: true
+    roles:
+      - admin
+  "sendmessage":
+    help: "Sends message as the bot to a channel - sendmessage <channel_id> <message>"
+    function: "sendMessage"
+    secret: true
+    roles:
+      - admin
+  "editmessage":
+    help: "Edits a message the bot has sent - editmessage <channel_id> <message_id> <message>"
+    function: "editMessage"
+    secret: true
+    roles:
+      - admin
+
 commandroles:
   admin:
     - 111111111111111111
@@ -29,26 +104,11 @@ commandroles:
   members:
     - 111111111111111111
       # user1
-commandperms:
-  wiki: all
-  www: "discord:role_1"
-  web: "discord:role_2"
-  status: all
-  gatecode: members
-  botwatcher: all
-  camera: admin
-  gatecode: members
-  help: all
-  "camera list": all
-  "camera snapshot": "discord:role_2"
-  "server ip": admin
-  "my name is": all
-  "ls -la": admin
-  "sendmessage": admin
-  "editmessage": admin
+
 discordroles:
   role_1: 123456789123456789
   role_2: 987654321987654321
+
 reactions:
     name1:
       type: "role"
