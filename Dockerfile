@@ -1,11 +1,8 @@
-FROM alpine:latest
+FROM ubuntu:24.04
 
-RUN apk add --no-cache tzdata
+RUN apt-get update && apt install -y ca-certificates
 
-RUN apk add --update-cache \
-  tzdata \
-  bash \
-  && rm -rf /var/cache/apk/*
+RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
 
 COPY simple-discord-bot /app/
 CMD ["/app/simple-discord-bot", "--config", "/config/config.yaml"]

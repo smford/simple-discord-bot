@@ -1,11 +1,15 @@
-discordtoken: aaaaaBBBBBBBcccccDDDDDD
-defaultserverid: 123123123123123123
-canaryenable: true
-canaryinterval: 10
-canaryurl: "http://172.28.0.10:54035/checkin/eeh-bot"
-shellenable: true
-shell: sh
-commandkey: "!eeh"
+_discord_token: aaaaaBBBBBBBcccccDDDDDD
+_discord_default_server_id: 123123123123123123
+_discord_message_chunk_size: 1980
+_log_discord_channel_id: 1347658478168309761
+_log_level: error
+_canary_enabled: true
+_canary_interval: 10
+_canary_url: "http://172.28.0.10:54035/checkin/eeh-bot"
+_shell_enabled: true
+_shell: sh
+_command_key: "!eeh"
+_http_api_port: 12345
 
 commands:
   "wiki":
@@ -13,7 +17,10 @@ commands:
     message: "https://eehack.space"
     roles:
       - all
+    deletecommandmessage: true
   "web":
+    aliases:
+      - "website"
     help: "Website"
     message: "https://eehack.space"
     roles:
@@ -55,13 +62,19 @@ commands:
       - all
   "camera snapshot":
     help: "Take a snapshot of the camera"
-    api: "http://172.28.0.10:54036/snap?camera={0}"
+    function: "cameraSnapshot"
     secret: true
     roles:
       - admin
   "camera list":
     help: "Display list of cameras"
-    api: "http://172.28.0.10:54036/cameras"
+    function: "cameraList"
+    roles:
+      - admin
+  "camera snapshots":
+    help: "URL of Snapshots"
+    message: "https://cctv.example.com/"
+    secret: true
     roles:
       - admin
   "server ip":
@@ -95,7 +108,7 @@ commands:
     roles:
       - admin
 
-commandroles:
+discord_roles_users:
   admin:
     - 111111111111111111
       # user1
@@ -105,11 +118,11 @@ commandroles:
     - 111111111111111111
       # user1
 
-discordroles:
+discord_roles:
   role_1: 123456789123456789
   role_2: 987654321987654321
 
-reactions:
+discord_reactions:
     name1:
       type: "role"
       channel_id: 1212121212
@@ -122,3 +135,25 @@ reactions:
       message_id: 1234567890
       emoji: "name:3434343434"
       role_id: 2222222222
+
+sticky_messages:
+    delay_seconds: 2
+   "YOUR_CHANNEL_ID":
+       message: |
+           📌 **IMPORTANT NOTICE**
+           Please follow the channel rules and guidelines.
+           For help, contact the moderators.
+       old_message_id: "0"
+
+http_api_keys:
+    12345:
+        channels:
+            - 12345678901234567890
+
+rss_feeds:
+    test-feed:
+        channel_id: "1234567890"
+        disabled: false
+        interval: 300
+        name: Test Feed
+        url: https://example.com/feed.rss

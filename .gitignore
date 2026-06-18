@@ -1,4 +1,3 @@
 config.yaml
-help.txt
-__debug_bin*
 simple-discord-bot
+tmp/*

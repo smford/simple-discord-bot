@@ -1,9 +1,8 @@
 name: Build and publish a Docker image to Docker Hub
 on:
-
   # publish on releases, e.g. v2.1.13 (image tagged as "2.1.13" - "v" prefix is removed)
   release:
-    types: [ published ]
+    types: [published]
 
   # publish on pushes to the main branch (image tagged as "latest")
   push:
@@ -14,15 +13,15 @@ env:
   REGISTRY: docker.io
   # github.repository as <account>/<repo>
   IMAGE_NAME: ${{ github.repository }}
-  
+
 jobs:
   docker_publish:
     runs-on: "ubuntu-latest"
 
     strategy:
       matrix:
-        go-version: [ '1.22' ]
-        
+        go-version: ["1.22"]
+
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +61,7 @@ jobs:
       - name: Extract application version
         shell: bash
         run: |
-          APP_VERSION=$(cat ./simple-discord-bot.go|grep ^const\ applic|cut -f5 -d\ |sed 's/\"//g')
+          APP_VERSION=$(cat ./main.go|grep ^const\ applic|cut -f5 -d\ |sed 's/\"//g')
           echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
 
       - name: Show application version
@@ -70,14 +69,20 @@ jobs:
         run: echo $APP_VERSION
         env:
           APP_VERSION: ${{ env.APP_VERSION }}
-          
+
+      - name: Set application build date/time
+        shell: bash
+        run: |
+          current_time=$(date +"%Y-%m-%d %H:%M:%S")
+          sed -i "s|const buildDateTime string = \".*\"|const buildDateTime string = \"${current_time}\"|" main.go
+
       - name: Install dependencies
         run: |
           go get .
 
       - name: Build
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w"
-        
+
       - name: Install UPX
         uses: crazy-max/ghaction-upx@v3
         with:
